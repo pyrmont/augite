@@ -1,0 +1,151 @@
+(import ../date)
+(import ../html)
+
+(def- root "../")
+
+; The width of the widest bar of + and - in the diffstat, as in stagit.
+(def- bar-width 78)
+
+; Beyond these sizes the diff is suppressed, as in stagit.
+(def- max-files 1000)
+(def- max-lines 100000)
+
+(defn message
+  "Returns the full message of commit."
+  [commit]
+  (if (empty? (commit :body))
+    (commit :subject)
+    (string (commit :subject) "\n\n" (commit :body))))
+
+(defn- changed [file]
+  (+ (or (file :added) 0) (or (file :deleted) 0)))
+
+(defn- bar
+  "Returns the bar of + and - for file, scaled down as stagit does."
+  [file]
+  (var added (or (file :added) 0))
+  (var deleted (or (file :deleted) 0))
+  (def total (+ added deleted))
+  (when (> total bar-width)
+    (when (pos? added)
+      (set added (inc (math/floor (* (/ bar-width total) added)))))
+    (when (pos? deleted)
+      (set deleted (inc (math/floor (* (/ bar-width total) deleted))))))
+  (string "<span class=\"i\">" (string/repeat "+" added) "</span>"
+          "<span class=\"d\">" (string/repeat "-" deleted) "</span>"))
+
+(defn- file-link
+  """
+  Returns path linked to its file page if it is in the current tree, with the
+  id if one is given.
+  """
+  ([ctx path] (file-link ctx path nil))
+  ([ctx path id]
+    (def attr (if id (string " id=\"" id "\"") ""))
+    (if (has-value? (ctx :paths) path)
+      (string "<a" attr " href=\"" (html/file-href root path) "\">"
+              (html/escape path) "</a>")
+      (string "<span" attr ">" (html/escape path) "</span>"))))
+
+(defn- plural [n word]
+  (string n " " word (if (= 1 n) "" "s")))
+
+(defn- header [commit]
+  (def out !"")
+  (def hash (commit :hash))
+  (buffer/push! out "<b>commit</b> <a href=\"" (html/commit-href root hash) "\">"
+                hash "</a>\n")
+  (when-let [parent (first (commit :parents))]
+    (buffer/push! out "<b>parent</b> <a href=\"" (html/commit-href root parent) "\">"
+                  parent "</a>\n"))
+  (def email (html/escape (commit :email)))
+  (buffer/push! out
+                "<b>Author:</b> " (html/escape (commit :author))
+                " &lt;<a href=\"mailto:" email "\">" email "</a>&gt;\n"
+                "<b>Date:</b>   " (date/long (commit :time) (commit :date)) "\n"
+                "\n" (html/escape (message commit)) "\n")
+  (string out))
+
+(defn- diffstat [files]
+  (def out !"<div class=\"scroll\"><table id=\"diffstat\">\n")
+  (for i 0 (length files)
+    (def file (get files i))
+    (def status (file :status))
+    (def name (if (= (file :old-path) (file :path))
+                (html/escape (file :path))
+                (string (html/escape (file :old-path)) " -&gt; "
+                        (html/escape (file :path)))))
+    (buffer/push! out
+                  (string "<tr><td class=\"" status "\">" status "</td>"
+                          "<td><a href=\"#h" i "\">" name "</a></td>"
+                          "<td> | </td><td class=\"num\">" (changed file) "</td>"
+                          "<td>" (bar file) "</td></tr>\n")))
+  (buffer/push! out "</table></div>\n")
+  (string out))
+
+(defn- hunks
+  """
+  Returns the hunks of the diff for file i, with each hunk and each added or
+  deleted line linked to itself.
+  """
+  [i patch]
+  (def out !"")
+  (var h -1)
+  (var j 0)
+  (def lines (string/split "\n" patch))
+  ; The patch ends with a newline, which leaves an empty last element.
+  (when (= "" (last lines))
+    (array/pop! lines))
+  (each line lines
+    (def text (html/escape line))
+    (cond
+      (string/has-prefix? "@@" line)
+      (do
+        (++ h)
+        (set j 0)
+        (def id (string "h" i "-" h))
+        (buffer/push! out "<a href=\"#" id "\" id=\"" id "\" class=\"h\">" text "</a>\n"))
+      (or (string/has-prefix? "+" line) (string/has-prefix? "-" line))
+      (do
+        (def id (string "h" i "-" h "-" j))
+        (buffer/push! out "<a href=\"#" id "\" id=\"" id "\" class=\""
+                      (if (string/has-prefix? "+" line) "i" "d") "\">" text "</a>\n")
+        (++ j))
+      (do
+        (buffer/push! out text "\n")
+        (++ j))))
+  (string out))
+
+(defn- diff [ctx files]
+  (def out !"")
+  (for i 0 (length files)
+    (def file (get files i))
+    (buffer/push! out "<section class=\"diff\">\n<h3>diff --git a/"
+                  (file-link ctx (file :old-path) (string "h" i))
+                  " b/" (file-link ctx (file :path)) "</h3>\n")
+    (cond
+      (file :binary?) (buffer/push! out "<p>Binary files differ.</p>\n")
+      (empty? (file :patch)) nil
+      (buffer/push! out "<pre>" (hunks i (file :patch)) "</pre>\n"))
+    (buffer/push! out "</section>\n"))
+  (string out))
+
+(defn render
+  """
+  Returns the page for commit, which changed files, a vector of the maps that
+  `git/changes` returns.
+  """
+  [ctx commit files]
+  (def added (sum (map #(or ($ :added) 0) files)))
+  (def deleted (sum (map #(or ($ :deleted) 0) files)))
+  (def out !"")
+  (buffer/push! out
+                "<pre class=\"commit\">" (header commit) "</pre>\n"
+                "<h2>Diffstat</h2>\n" (diffstat files)
+                "<p class=\"summary\">" (plural (length files) "file") " changed, "
+                (plural added "insertion") "(+), "
+                (plural deleted "deletion") "(-)</p>\n")
+  (if (or (> (length files) max-files) (> added max-lines) (> deleted max-lines))
+    (buffer/push! out "<p>Diff is too large, output suppressed.</p>\n")
+    (buffer/push! out (diff ctx files)))
+  (html/page ctx root (commit :subject) nil (string out)))

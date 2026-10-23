@@ -1,0 +1,384 @@
+; Git is run as a subprocess. Output is requested with NUL separators where
+; git offers them, so that commit messages and file names parse safely.
+
+; Options that make the output of a diff independent of the user's config.
+(def- diff-opts ["--no-color" "--no-ext-diff" "--no-textconv"
+                 "--src-prefix=a/" "--dst-prefix=b/"])
+
+(defn- spawn [repo-dir args io]
+  (os/spawn ["git" "-C" repo-dir |args] :p io))
+
+(defn- run
+  """
+  Runs git with args in repo-dir and returns a vector of the exit code, the
+  standard output and the standard error, each output as a string.
+  """
+  [repo-dir args]
+  (def proc (spawn repo-dir args {:out :pipe :err :pipe}))
+  (def [out err] (ev/gather (:read (proc :out) :all) (:read (proc :err) :all)))
+  (def code (os/proc-wait proc))
+  (os/proc-close proc)
+  [code (if out (string out) "") (if err (string err) "")])
+
+(defn- git
+  "Runs git with args in repo-dir and returns its output. Raises if git fails."
+  [repo-dir & args]
+  (def [code out err] (run repo-dir args))
+  (unless (zero? code)
+    (errorf "git %s failed: %s" (first args) (string/trim err)))
+  out)
+
+(defn- fields
+  "Splits s, a sequence of NUL-terminated fields, into a vector."
+  [s]
+  (def parts (string/split "\0" s))
+  (array/pop! parts)
+  (vec parts))
+
+(defn- byte-at? [s pos c]
+  (= (get s pos) (get c 0)))
+
+(defn- read-to
+  """
+  Returns a vector of the text in s from pos up to delim and the position
+  after delim.
+  """
+  [s pos delim]
+  (def end (string/find delim s pos))
+  (assertf end "unexpected end of git output at byte %d" pos)
+  [(string/slice s pos end) (+ end (length delim))])
+
+(defn- read-file [path]
+  (when (= :file (os/stat path :mode))
+    (string/trim (slurp path))))
+
+; Repository
+
+(defn info
+  """
+  Returns a map describing the repository at repo-dir: :name, :description,
+  :owner and :url. As in stagit, the name is the base name of the directory
+  without a `.git` suffix, and the others are read from the files of that name
+  in repo-dir or, failing that, in repo-dir/.git. A missing file gives nil.
+  """
+  [repo-dir]
+  (def path (os/realpath repo-dir))
+  (def base (last (string/split "/" path)))
+  (defn meta [name]
+    (or (read-file (string path "/" name))
+        (read-file (string path "/.git/" name))))
+  {:name (if (string/has-suffix? ".git" base)
+           (string/slice base 0 (- (length base) 4))
+           base)
+   :description (meta "description")
+   :owner (meta "owner")
+   :url (meta "url")})
+
+(defn head
+  "Returns the hash of the commit HEAD points to, or nil if there is none."
+  [repo-dir]
+  (def [code out] (run repo-dir ["rev-parse" "--verify" "-q" "HEAD^{commit}"]))
+  (when (zero? code)
+    (string/trim out)))
+
+; Numstat
+
+(defn- numstat-at?
+  """
+  Returns true if the text in s at pos begins a numstat record rather than
+  some other NUL-terminated field.
+  """
+  [s pos]
+  (def end (string/find "\0" s pos))
+  (and end (string/find "\t" (string/slice s pos end))))
+
+(defn- read-numstat
+  """
+  Reads the numstat record at pos in s and returns a vector of the numbers of
+  added and deleted lines, as strings, and the position after the record.
+  The record is "<added>\t<deleted>\t<path>\0", or for a rename or a copy
+  "<added>\t<deleted>\t\0<path>\0<path>\0". Binary files show "-".
+  """
+  [s pos]
+  (def [added p1] (read-to s pos "\t"))
+  (def [deleted p2] (read-to s p1 "\t"))
+  [added deleted (if (byte-at? s p2 "\0")
+                   (get (read-to s (get (read-to s (inc p2) "\0") 1) "\0") 1)
+                   (get (read-to s p2 "\0") 1))])
+
+; Commits
+
+(def- log-fields ["%H" "%P" "%an" "%ae" "%at" "%aI" "%ct" "%s" "%b"])
+
+(defn- commit-of [[hash parents name email time date commit-time subject body]]
+  {:hash hash
+   :parents (if (empty? parents) [] (vec (string/split " " parents)))
+   :author name
+   :email email
+   :time (scan-number time)
+   :date date
+   :commit-time (scan-number commit-time)
+   :subject subject
+   :body (string/trimr body)})
+
+(defn- parse-log [out stats?]
+  (def commits ![])
+  (var pos 0)
+  (while (< pos (length out))
+    (def values ![])
+    (repeat (length log-fields)
+      (def [value next] (read-to out pos "\0"))
+      (array/push! values value)
+      (set pos next))
+    (def commit (commit-of values))
+    (if stats?
+      (do
+        ; A newline separates the fields from the numstat records.
+        (when (byte-at? out pos "\n")
+          (++ pos))
+        (var files 0)
+        (var added 0)
+        (var deleted 0)
+        (while (numstat-at? out pos)
+          (def [a d next] (read-numstat out pos))
+          (++ files)
+          (unless (= "-" a)
+            (+= added (scan-number a))
+            (+= deleted (scan-number d)))
+          (set pos next))
+        (array/push! commits (assoc commit :files files :added added :deleted deleted)))
+      (array/push! commits commit)))
+  (vec commits))
+
+(defn commits
+  """
+  Returns a vector of the commits reachable from rev, newest first. Each is a
+  map of :hash, :parents (a vector of hashes), :author, :email, :time (Unix
+  seconds), :date (ISO 8601), :commit-time (Unix seconds), :subject and
+  :body. With limit, at most that many commits are returned. With stats?,
+  each also has :files, :added and :deleted, the numbers of files and lines
+  changed compared with the first parent. Returns an empty vector if the
+  repository has no commits.
+  """
+  [repo-dir & {:keys [rev limit stats?] :or {rev "HEAD"}}]
+  (def args ["log" "-z" "--no-show-signature" "--no-color"
+             (string "--format=" (string/join "%x00" log-fields))
+             |(if limit [(string "-n" limit)] [])
+             |(if stats? ["--numstat" "-M" "--diff-merges=first-parent"] [])
+             rev "--"])
+  (def [code out err] (run repo-dir args))
+  (cond
+    (zero? code)
+    (parse-log out stats?)
+    (nil? (head repo-dir))
+    []
+    (errorf "git log failed: %s" (string/trim err))))
+
+; Changes
+
+(defn- split-patches
+  "Splits the patch text of a diff into one string for each file."
+  [patch]
+  (def starts (if (empty? patch)
+                []
+                [0 |(map inc (string/find-all "\ndiff --git " patch))]))
+  (def out ![])
+  (for i 0 (length starts)
+    (array/push! out (string/slice patch (get starts i)
+                                   (get starts (inc i) (length patch)))))
+  out)
+
+(defn- hunks
+  "Returns the hunks of the patch for one file, without its header lines."
+  [patch]
+  (def start (if (string/has-prefix? "@@" patch)
+               0
+               (when-let [i (string/find "\n@@" patch)] (inc i))))
+  (if start (string/slice patch start) ""))
+
+(defn- parse-changes [out]
+  (def raws ![])
+  (var pos 0)
+  ; Each raw record is ":<mode> <mode> <hash> <hash> <status>\0<path>\0", with
+  ; a second path for a rename or a copy.
+  (while (byte-at? out pos ":")
+    (def [meta p1] (read-to out (inc pos) "\0"))
+    (def [old-mode new-mode old-hash new-hash status] (string/split " " meta))
+    (def kind (string/slice status 0 1))
+    (def [old-path p2] (read-to out p1 "\0"))
+    (def [path p3] (if (or (= kind "R") (= kind "C"))
+                     (read-to out p2 "\0")
+                     [old-path p2]))
+    (array/push! raws {:status kind
+                       :old-path old-path
+                       :path path
+                       :old-mode old-mode
+                       :new-mode new-mode
+                       :old-hash old-hash
+                       :new-hash new-hash})
+    (set pos p3))
+  ; One numstat record follows for each raw record.
+  (def stats ![])
+  (each _ raws
+    (def [added deleted next] (read-numstat out pos))
+    (array/push! stats [added deleted])
+    (set pos next))
+  ; An empty record separates the numstat records from the patch.
+  (when (byte-at? out pos "\0")
+    (++ pos))
+  (def patches (split-patches (string/slice out pos)))
+  (assertf (= (length patches) (length raws))
+           "expected %d patches from git diff-tree, found %d"
+           (length raws) (length patches))
+  (def files ![])
+  (for i 0 (length raws)
+    (def [added deleted] (get stats i))
+    (def binary? (= "-" added))
+    (array/push! files
+      (assoc (get raws i)
+             :binary? binary?
+             :added (unless binary? (scan-number added))
+             :deleted (unless binary? (scan-number deleted))
+             :patch (unless binary? (hunks (get patches i))))))
+  (vec files))
+
+(defn changes
+  """
+  Returns a vector of the files changed by the commit hash, compared with
+  parent, or with the empty tree if parent is nil. Renames are detected. Each
+  file is a map of :status ("A", "C", "D", "M", "R" or "T"), :path, :old-path,
+  :old-mode, :new-mode, :old-hash, :new-hash, :binary?, :added and :deleted
+  (the numbers of lines) and :patch (the hunks of the diff). A binary file
+  has nil for :added, :deleted and :patch.
+  """
+  [repo-dir hash parent]
+  (def out (git repo-dir "diff-tree" "-z" "-M" "--raw" "--numstat" "-p"
+                |diff-opts |(if parent [parent hash] ["--root" hash])))
+  ; Given one commit, diff-tree prints its hash first.
+  (def prefix (string hash "\0"))
+  (parse-changes (if (string/has-prefix? prefix out)
+                   (string/slice out (length prefix))
+                   out)))
+
+; Refs
+
+(def- ref-fields
+  ["%(refname)" "%(objecttype)" "%(objectname)" "%(authorname)"
+   "%(authoremail:trim)" "%(authordate:unix)" "%(authordate:iso-strict)"
+   "%(subject)" "%(*objecttype)" "%(*objectname)" "%(*authorname)"
+   "%(*authoremail:trim)" "%(*authordate:unix)" "%(*authordate:iso-strict)"
+   "%(*subject)"])
+
+(defn- ref-of [record]
+  (def [refname type hash name email time date subject & peeled]
+    (string/split "\0" record))
+  ; An annotated tag is described by the commit it points to.
+  (def [type hash name email time date subject]
+    (if (empty? (first peeled))
+      [type hash name email time date subject]
+      peeled))
+  (when (= "commit" type)
+    (def branch? (string/has-prefix? "refs/heads/" refname))
+    {:kind (if branch? :branch :tag)
+     :name (string/slice refname (length (if branch? "refs/heads/" "refs/tags/")))
+     :hash hash
+     :author name
+     :email email
+     :time (scan-number time)
+     :date date
+     :subject subject}))
+
+(defn refs
+  """
+  Returns a vector of the branches and tags that point to commits. Each is a
+  map of :kind (:branch or :tag), :name, and the :hash, :author, :email,
+  :time, :date and :subject of the commit. An annotated tag is given the
+  details of the commit it points to.
+  """
+  [repo-dir]
+  (def out (git repo-dir "for-each-ref"
+                (string "--format=" (string/join "%00" ref-fields))
+                "refs/heads" "refs/tags"))
+  (vec (keep ref-of (filter #(not (empty? $)) (string/split "\n" out)))))
+
+; Tree
+
+(defn- entry-of [record]
+  (def [meta path] (string/split "\t" record 0 2))
+  (def [mode type hash size] (filter #(not (empty? $)) (string/split " " meta)))
+  {:mode mode
+   :type (keyword type)
+   :hash hash
+   :size (scan-number size)
+   :path path})
+
+(defn tree
+  """
+  Returns a vector of the files in the tree of rev, recursively. Each is a
+  map of :mode, :type (:blob or :commit, for a submodule), :hash, :size (nil
+  for a submodule) and :path. Returns an empty vector if rev does not exist.
+  """
+  [repo-dir & {:keys [rev] :or {rev "HEAD"}}]
+  (def [code out err] (run repo-dir ["ls-tree" "-r" "-l" "-z" "--full-tree" rev]))
+  (cond
+    (zero? code) (vec (map entry-of (fields out)))
+    (nil? (head repo-dir)) []
+    (errorf "git ls-tree failed: %s" (string/trim err))))
+
+; Objects
+
+(defn open-objects
+  """
+  Starts one `git cat-file --batch` process for repo-dir, from which
+  read-object reads objects. close-objects stops the process.
+  """
+  [repo-dir]
+  !{:proc (spawn repo-dir ["cat-file" "--batch"] {:in :pipe :out :pipe})
+    :buf !""})
+
+(defn- read-more! [objects]
+  (unless (ev/read (get-in objects [:proc :out]) 65536 (objects :buf))
+    (error "unexpected end of git cat-file output")))
+
+(defn- consume! [objects n]
+  (def buf (objects :buf))
+  (def rest (buffer/slice buf n))
+  (buffer/clear! buf)
+  (buffer/push! buf rest))
+
+(defn read-object
+  """
+  Returns the object named by rev as a map of :type, :size and :content, or
+  nil if there is no such object.
+  """
+  [objects rev]
+  (ev/write (get-in objects [:proc :in]) (string rev "\n"))
+  (def buf (objects :buf))
+  (var nl (string/find "\n" buf))
+  (while (nil? nl)
+    (read-more! objects)
+    (set nl (string/find "\n" buf)))
+  ; The header is "<hash> <type> <size>", or "<rev> missing" and the like.
+  (def header (string/split " " (string (buffer/slice buf 0 nl))))
+  (if (not= 3 (length header))
+    (do
+      (consume! objects (inc nl))
+      nil)
+    (do
+      (def size (scan-number (get header 2)))
+      (def start (inc nl))
+      ; The content is followed by a newline.
+      (while (< (length buf) (+ start size 1))
+        (read-more! objects))
+      (def content (string (buffer/slice buf start (+ start size))))
+      (consume! objects (+ start size 1))
+      {:type (keyword (get header 1)) :size size :content content})))
+
+(defn close-objects
+  "Stops the process started by open-objects."
+  [objects]
+  (def proc (objects :proc))
+  (:close (proc :in))
+  (os/proc-wait proc)
+  (os/proc-close proc)
+  nil)

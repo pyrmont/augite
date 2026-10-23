@@ -1,0 +1,70 @@
+(import ../date)
+(import ../html)
+(import ./commit)
+
+(defn- content [c]
+  (def out !"")
+  (buffer/push! out "commit " (c :hash) "\n")
+  (when-let [parent (first (c :parents))]
+    (buffer/push! out "parent " parent "\n"))
+  (buffer/push! out
+                "Author: " (c :author) " <" (c :email) ">\n"
+                "Date:   " (date/long (c :time) (c :date)) "\n"
+                "\n" (commit/message c) "\n\n")
+  (string out))
+
+(defn- entry [base c tag]
+  (string "<entry>\n"
+          "<id>" (c :hash) "</id>\n"
+          "<published>" (date/utc (c :time)) "</published>\n"
+          "<updated>" (date/utc (c :commit-time)) "</updated>\n"
+          "<title type=\"text\">" (if tag (string "[" (html/escape tag) "] ") "")
+          (html/escape (c :subject)) "</title>\n"
+          "<link rel=\"alternate\" type=\"text/html\" href=\""
+          (html/escape (html/commit-href base (c :hash))) "\" />\n"
+          "<author>\n"
+          "<name>" (html/escape (c :author)) "</name>\n"
+          "<email>" (html/escape (c :email)) "</email>\n"
+          "</author>\n"
+          "<content type=\"text\">" (html/escape (content c)) "</content>\n"
+          "</entry>\n"))
+
+(defn- feed [ctx entries updated]
+  (def info (ctx :info))
+  (def base (ctx :base-url))
+  (def out !"")
+  (buffer/push! out
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<feed xmlns=\"http://www.w3.org/2005/Atom\">\n"
+                "<title>" (html/escape (info :name)) ", branch HEAD</title>\n")
+  (when-let [desc (info :description)]
+    (buffer/push! out "<subtitle>" (html/escape desc) "</subtitle>\n"))
+  (unless (empty? base)
+    (buffer/push! out "<link rel=\"alternate\" type=\"text/html\" href=\""
+                  (html/escape base) "\" />\n"))
+  (when updated
+    (buffer/push! out "<updated>" (date/utc updated) "</updated>\n"))
+  (each e entries
+    (buffer/push! out e))
+  (buffer/push! out "</feed>\n")
+  (string out))
+
+(defn atom
+  """
+  Returns the Atom feed of commits. Links are relative to the top of the
+  site, or absolute when ctx has a :base-url.
+  """
+  [ctx commits]
+  (feed ctx
+        (map #(entry (ctx :base-url) $ nil) commits)
+        (when-let [c (first commits)] (c :commit-time))))
+
+(defn tags
+  """
+  Returns the Atom feed of tags, a vector of vectors of a tag name and the
+  commit it points to, newest first.
+  """
+  [ctx tags]
+  (feed ctx
+        (map (fn [[name c]] (entry (ctx :base-url) c name)) tags)
+        (when-let [[_ c] (first tags)] (c :commit-time))))

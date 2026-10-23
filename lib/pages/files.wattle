@@ -1,0 +1,52 @@
+(import ../assets)
+(import ../html)
+
+(def- modes
+  {"100644" "-rw-r--r--"
+   "100755" "-rwxr-xr-x"
+   "120000" "lrwxrwxrwx"
+   "160000" "m---------"})
+
+(defn mode-string
+  "Returns the mode of a tree entry in the form that ls uses."
+  [mode]
+  (get modes mode "?---------"))
+
+(defn- size [blob]
+  (if (blob :text?)
+    (string (blob :lines) "L")
+    (string (blob :size) "B")))
+
+(defn- row [ctx entry blob]
+  (def path (entry :path))
+  (if (= :commit (entry :type))
+    ; A submodule links to .gitmodules, as in stagit.
+    (string "<tr data-path=\"" (html/escape path) "\">"
+            "<td class=\"mode\">" (mode-string (entry :mode)) "</td><td class=\"name\">"
+            (if (has-value? (ctx :paths) ".gitmodules")
+              (string "<a href=\"" (html/file-href "" ".gitmodules") "\">"
+                      (html/escape path) "</a>")
+              (html/escape path))
+            " @ " (string/slice (entry :hash) 0 7)
+            "</td><td class=\"num size\"></td></tr>\n")
+    (string "<tr data-path=\"" (html/escape path) "\">"
+            "<td class=\"mode\">" (mode-string (entry :mode)) "</td>"
+            "<td class=\"name\"><a href=\"" (html/file-href "" path) "\">" (html/escape path) "</a></td>"
+            "<td class=\"num size\">" (size blob) "</td></tr>\n")))
+
+(defn render
+  """
+  Returns the page listing the entries of the tree. blobs maps the path of
+  each file to a map of :size, :text? and, for text, :lines.
+  """
+  [ctx entries blobs]
+  (def out !"")
+  (buffer/push!
+    out
+    "<table id=\"files\">\n"
+    "<thead><tr><th>Mode</th><th>Name</th><th class=\"num\">Size</th></tr></thead>\n"
+    "<tbody>\n")
+  (each entry entries
+    (buffer/push! out (row ctx entry (get blobs (entry :path)))))
+  (buffer/push! out "</tbody>\n</table>\n")
+  (html/page ctx "" "Files" :files (string out) :script assets/script-href))

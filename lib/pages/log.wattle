@@ -1,0 +1,51 @@
+(import ../date)
+(import ../html)
+
+(defn href
+  "Returns the link from the top of the site to log page n, counting from 1."
+  [n]
+  (if (= 1 n) "log.html" (string "log/" n ".html")))
+
+(defn root
+  "Returns the relative path from log page n to the top of the site."
+  [n]
+  (if (= 1 n) "" "../"))
+
+(defn- row [root commit]
+  (string "<tr><td class=\"date\">" (date/short (commit :time)) "</td>"
+          "<td class=\"msg\"><a href=\"" (html/commit-href root (commit :hash)) "\">"
+          (html/escape (commit :subject)) "</a></td>"
+          "<td class=\"author\">" (html/escape (commit :author)) "</td>"
+          "<td class=\"num files\">" (commit :files) "</td>"
+          "<td class=\"num added\">+" (commit :added) "</td>"
+          "<td class=\"num deleted\">-" (commit :deleted) "</td></tr>\n"))
+
+(defn- pager [root n total]
+  (def links ![])
+  (when (> n 1)
+    (array/push! links (string "<a href=\"" root (href (dec n)) "\" rel=\"prev\">Newer</a>")))
+  (array/push! links (string "Page " n " of " total))
+  (when (< n total)
+    (array/push! links (string "<a href=\"" root (href (inc n)) "\" rel=\"next\">Older</a>")))
+  (string "<nav class=\"pager\">" (string/join " | " links) "</nav>\n"))
+
+(defn render
+  """
+  Returns log page n of total, which lists commits. Each commit has the
+  stats that `git/commits` gives with :stats?.
+  """
+  [ctx commits n total]
+  (def r (root n))
+  (def out !"")
+  (buffer/push!
+    out
+    "<table id=\"log\">\n"
+    "<thead><tr><th>Date</th><th>Commit message</th><th>Author</th>"
+    "<th class=\"num\">Files</th><th class=\"num\">+</th><th class=\"num\">-</th></tr></thead>\n"
+    "<tbody>\n")
+  (each commit commits
+    (buffer/push! out (row r commit)))
+  (buffer/push! out "</tbody>\n</table>\n")
+  (when (> total 1)
+    (buffer/push! out (pager r n total)))
+  (html/page ctx r "Log" :log (string out)))

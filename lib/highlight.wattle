@@ -1,0 +1,181 @@
+; Highlighting of file contents with TextMate grammars.
+
+(import ./fs)
+(import ./html)
+(import ./hl/classes)
+(import ./hl/engine)
+
+; Files larger than this are not highlighted.
+(def- max-size (* 512 1024))
+
+; The seconds that highlighting one file may take.
+(def- time-limit 5)
+
+(defmacro- code-digest
+  """
+  Expands to the SHA-256 digest of the files that decide how a file is
+  highlighted, read at compile time.
+  """
+  []
+  (def here (os/realpath (dyn :current-file)))
+  (def lib (string/slice here 0 (last (string/find-all "/" here))))
+  (def out !"")
+  (each path ["highlight.wattle" "html.wattle" "hl/classes.wattle"
+              "hl/compile.wattle" "hl/engine.wattle" "hl/regex.wattle"]
+    (buffer/push! out (slurp (string lib "/" path))))
+  (string (crypto/hash :sha256 out)))
+
+(defn- warn [msg]
+  (eprint "augite: warning: " msg))
+
+(defn- decode [text source]
+  (try
+    (engine/decode text)
+    ([e]
+      (warn (string/format "%s: %s" source e))
+      nil)))
+
+(defn load-grammars
+  """
+  Returns a vector of the grammars in the directory dir, in order of their
+  file names, or an empty vector if dir is nil. A grammar can include the
+  others, and has the SHA-256 digest of its file as :digest. A grammar that
+  cannot be loaded produces a warning.
+  """
+  [dir]
+  (if (nil? dir)
+    []
+    (do
+      (assertf (= :directory (os/stat dir :mode)) "not a directory: %s" dir)
+      (def raws (keep (fn [name]
+                        (when (string/has-suffix? ".json" name)
+                          (def path (string dir "/" name))
+                          (def text (slurp path))
+                          (when-let [raw (decode text path)]
+                            [path raw text])))
+                      (sort (os/dir dir))))
+      (def registry (from-pairs (map (fn [[_ raw]] [(get raw "scopeName") raw]) raws)))
+      (vec (keep (fn [[path raw text]]
+                   (try
+                     (put! (engine/load raw :registry registry) :digest (crypto/hash :sha256 text))
+                     ([e]
+                       (warn (string/format "%s: %s" path e))
+                       nil)))
+                 raws)))))
+
+(defn grammar-for
+  """
+  Returns the first grammar in grammars with a file type that is the name of
+  the file at path or its extension, or nil.
+  """
+  [grammars path]
+  (def name (last (string/split "/" path)))
+  (find (fn [g]
+          (find-index #(or (= $ name) (string/has-suffix? (string "." $) name))
+                      (g :file-types)))
+        grammars))
+
+(defn- line-html [line tokens]
+  (def out !"")
+  (var pos 0)
+  (var open nil)
+  (defn push-text [class text]
+    (unless (= class open)
+      (when open (buffer/push! out "</span>"))
+      (when class (buffer/push! out "<span class=\"" class "\">"))
+      (set open class))
+    (buffer/push! out (html/escape text)))
+  (each [start end scopes] tokens
+    (when (> start pos)
+      (push-text nil (string/slice line pos start)))
+    (push-text (classes/class-of scopes) (string/slice line start end))
+    (set pos end))
+  (when (< pos (length line))
+    (push-text nil (string/slice line pos)))
+  (when open (buffer/push! out "</span>"))
+  (string out))
+
+(defn- split-lines [content]
+  (def lines (string/split "\n" content))
+  (when (= "" (last lines))
+    (array/pop! lines))
+  lines)
+
+(defn- highlight-with [g path content]
+  (try
+    (do
+      (def lines (split-lines content))
+      (def tokens (engine/tokenize g content :time-limit time-limit))
+      (vec (map line-html lines tokens)))
+    ([e]
+      (warn (string/format "%s: not highlighted: %s" path e))
+      nil)))
+
+; The cache of highlighted files has one file for each blob, named by the
+; blob's hash and a key. The key is a digest of the code above and the
+; grammars, so that a change to either leaves every cached file unused. A
+; cached file is "h" and the markup of each line, one to a line, or "p" for a
+; file that was not highlighted.
+
+(def- entry-name (peg/compile ['* ['some ['range "09" "af"]] "-" ['some ['range "09" "af"]] -1]))
+
+(defn- hex [bytes]
+  (def out !"")
+  (each b bytes
+    (buffer/format! out "%02x" b))
+  (string out))
+
+(defn open-cache
+  """
+  Returns the cache of highlighted files in the directory dir, for files
+  highlighted with grammars, or nil if dir is nil. Creates dir if it is
+  missing.
+  """
+  [dir grammars]
+  (when dir
+    (fs/mkdirp dir)
+    (def parts !"")
+    (buffer/push! parts (code-digest))
+    (each g grammars
+      (buffer/push! parts (g :digest)))
+    {:dir dir
+     :key (string/slice (hex (crypto/hash :sha256 parts)) 0 16)
+     :used !{}}))
+
+(defn close-cache
+  "Removes the files in cache that were not used since it was opened."
+  [cache]
+  (when cache
+    (each name (os/dir (cache :dir))
+      (when (and (peg/match entry-name name) (not (get (cache :used) name)))
+        (os/rm (string (cache :dir) "/" name))))))
+
+(defn highlight
+  """
+  Returns a vector of the markup of each line of content, the file at path,
+  highlighted with the grammar for path in grammars. Returns nil if there is
+  no grammar for path, if content is larger than the size limit, or if
+  highlighting fails or takes longer than the time limit, which produces a
+  warning. With cache, from open-cache, and hash, the hash of the blob that
+  content is, the result is read from the cache if it is there and written
+  to it if not. A cached result without a line for each line of content is
+  replaced.
+  """
+  [grammars path content & {:keys [cache hash]}]
+  (when-let [g (and (<= (length content) max-size) (grammar-for grammars path))]
+    (if (and cache hash)
+      (do
+        (def name (string hash "-" (cache :key)))
+        (def file (string (cache :dir) "/" name))
+        (put! (cache :used) name true)
+        (def [kind & cached] (if (= :file (os/stat file :mode))
+                               (string/split "\n" (slurp file))
+                               [nil]))
+        (cond
+          (= "p" kind) nil
+          (and (= "h" kind) (= (length cached) (length (split-lines content)))) (vec cached)
+          (do
+            (def lines (highlight-with g path content))
+            (spit file (if lines (string/join "\n" ["h" |lines]) "p"))
+            lines)))
+      (highlight-with g path content))))

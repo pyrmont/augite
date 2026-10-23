@@ -1,0 +1,47 @@
+(import ../assets)
+(import ../html)
+
+(defn root
+  "Returns the relative path from the page for the file at path to the top of the site."
+  [path]
+  (string/repeat "../" (inc (length (string/find-all "/" path)))))
+
+(defn- lines
+  """
+  Returns the lines of content, each in an element with the id l<n> that
+  starts with a link to itself showing its number. highlighted, if not nil,
+  is a vector of the markup of each line.
+  """
+  [content highlighted]
+  (def out !"")
+  (def parts (string/split "\n" content))
+  ; A final newline leaves an empty last element.
+  (when (= "" (last parts))
+    (array/pop! parts))
+  (for i 0 (length parts)
+    (def n (inc i))
+    (buffer/format! out "<span class=\"line\" id=\"l%d\"><a href=\"#l%d\" class=\"n\">%d</a>" n n n)
+    (buffer/push! out (if highlighted (get highlighted i) (html/escape (get parts i)))
+                  "</span>\n"))
+  [(string out) (length parts)])
+
+(defn render
+  """
+  Returns the page for the file entry. blob is a map of :size, :text?,
+  :too-large? and, for text, :content and, if it is highlighted,
+  :highlighted, a vector of the markup of each line.
+  """
+  [ctx entry blob]
+  (def path (entry :path))
+  (def r (root path))
+  (def out !"")
+  (buffer/push! out "<p class=\"meta\">" (html/escape path) " (" (string (blob :size)) "B)</p>\n")
+  (cond
+    (blob :too-large?) (buffer/push! out "<p>File is too large to display.</p>\n")
+    (not (blob :text?)) (buffer/push! out "<p>Binary file.</p>\n")
+    (do
+      (def [text n-lines] (lines (blob :content) (blob :highlighted)))
+      (buffer/push! out "<pre id=\"blob\" style=\"--digits: " (string (length (string n-lines)))
+                    "\"><code>" text "</code></pre>\n")))
+  (html/page ctx r path :files (string out)
+             :script (string r assets/script-href)))

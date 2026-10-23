@@ -1,0 +1,483 @@
+/* Colours */
+
+:root {
+  --fg: #000;
+  --bg: #fff;
+  --muted: #555;
+  --line-number: #949494;
+  --rule: #ccc;
+  --hover: #eee;
+  --target: #ffec99;
+  --link: #00e;
+  --hunk: #00a;
+  --added: #070;
+  --added-bg: rgba(0, 128, 0, 0.08);
+  --deleted: #c00;
+  --deleted-bg: rgba(204, 0, 0, 0.08);
+  --field: #fff;
+
+  --hl-comment: #6e7781;
+  --hl-string: #0a3069;
+  --hl-number: #0550ae;
+  --hl-keyword: #cf222e;
+  --hl-storage: #cf222e;
+  --hl-type: #953800;
+  --hl-function: #8250df;
+  --hl-tag: #116329;
+  --hl-property: #0550ae;
+  --hl-variable: #953800;
+  --hl-punctuation: #57606a;
+  --hl-invalid: #82071e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #bdbdbd;
+    --bg: #000;
+    --muted: #888;
+    --line-number: #666;
+    --rule: #333;
+    --hover: #111;
+    --target: #3a3000;
+    --link: #56c8ff;
+    --hunk: #00cdcd;
+    --added: #00cd00;
+    --added-bg: rgba(0, 205, 0, 0.12);
+    --deleted: #e05050;
+    --deleted-bg: rgba(205, 0, 0, 0.15);
+    --field: #111;
+
+    --hl-comment: #8b949e;
+    --hl-string: #a5d6ff;
+    --hl-number: #79c0ff;
+    --hl-keyword: #ff7b72;
+    --hl-storage: #ff7b72;
+    --hl-type: #ffa657;
+    --hl-function: #d2a8ff;
+    --hl-tag: #7ee787;
+    --hl-property: #79c0ff;
+    --hl-variable: #ffa657;
+    --hl-punctuation: #8b949e;
+    --hl-invalid: #ffa198;
+  }
+}
+
+/* Base */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  color: var(--fg);
+  background-color: var(--bg);
+  font-family: monospace;
+  line-height: 1.45;
+}
+
+a {
+  color: var(--link);
+}
+
+a:target {
+  background-color: var(--target);
+}
+
+h1, h2, h3 {
+  font-size: 1em;
+  margin: 0;
+}
+
+h2 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 1rem 0;
+}
+
+footer {
+  margin-top: 2rem;
+  color: var(--muted);
+}
+
+footer p {
+  margin: 0;
+}
+
+footer a {
+  color: inherit;
+}
+
+img {
+  border: 0;
+  vertical-align: middle;
+}
+
+pre {
+  font-family: inherit;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.desc,
+.meta,
+.summary {
+  color: var(--muted);
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+/* Header */
+
+header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  align-items: center;
+}
+
+header p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+header nav {
+  grid-column: 1 / -1;
+}
+
+nav a[aria-current="page"] {
+  font-weight: bold;
+}
+
+@media (min-width: 40rem) {
+  header nav {
+    grid-column: 2;
+  }
+}
+
+/* Tables */
+
+table {
+  border-collapse: collapse;
+}
+
+th {
+  font-weight: bold;
+  text-align: left;
+}
+
+td, th {
+  padding: 0.1em 0.5em;
+  vertical-align: top;
+}
+
+td:first-child, th:first-child {
+  padding-left: 0;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+tbody tr:hover td {
+  background-color: var(--hover);
+}
+
+.added, span.i {
+  color: var(--added);
+}
+
+.deleted, span.d {
+  color: var(--deleted);
+}
+
+#log .date,
+#files .mode,
+#branches td:nth-child(2),
+#tags td:nth-child(2),
+#index .date {
+  white-space: nowrap;
+}
+
+#files .name,
+#branches td:first-child,
+#tags td:first-child {
+  overflow-wrap: anywhere;
+}
+
+#index img {
+  display: block;
+}
+
+/* Narrow screens have their own rules for the log, below. */
+@media (min-width: 40rem) {
+  #log td {
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+  }
+
+  #log tbody tr + tr td {
+    border-top: 1px solid var(--rule);
+  }
+}
+
+.pager {
+  margin-top: 1rem;
+}
+
+/* On narrow screens, rows of the log and the index stack their cells. */
+@media (max-width: 39.99rem) {
+  #log, #log tbody, #index, #index tbody {
+    display: block;
+  }
+
+  #log thead, #index thead, #log .files, #files .mode, #files thead .mode,
+  #files th:first-child {
+    display: none;
+  }
+
+  #log tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    column-gap: 0.75em;
+    padding: 0.5em 0;
+  }
+
+  #log tr + tr, #index tr + tr {
+    border-top: 1px solid var(--rule);
+  }
+
+  #log td {
+    padding: 0;
+  }
+
+  #log .msg {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  #log .date, #log .author {
+    color: var(--muted);
+  }
+
+  #log .author {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #index tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    column-gap: 0.75em;
+    padding: 0.5em 0;
+  }
+
+  #index td {
+    padding: 0;
+  }
+
+  #index .logo {
+    grid-row: 1 / span 2;
+  }
+
+  #index .desc {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  #index .date {
+    color: var(--muted);
+  }
+}
+
+/* Commits */
+
+pre.commit {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#diffstat td {
+  padding-top: 0;
+  padding-bottom: 0;
+  white-space: nowrap;
+}
+
+#diffstat td:nth-child(2) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.A { color: var(--added); }
+.D { color: var(--deleted); }
+
+.diff {
+  margin-top: 1.5rem;
+}
+
+.diff h3 {
+  font-weight: bold;
+  margin-bottom: 0.5em;
+  overflow-wrap: anywhere;
+}
+
+.diff p {
+  margin: 0;
+}
+
+.diff pre a {
+  text-decoration: none;
+}
+
+.diff pre a.h,
+.diff pre a.i,
+.diff pre a.d {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.diff pre a.h {
+  color: var(--hunk);
+}
+
+.diff pre a.i {
+  color: var(--added);
+  background-color: var(--added-bg);
+}
+
+.diff pre a.d {
+  color: var(--deleted);
+  background-color: var(--deleted-bg);
+}
+
+.diff pre a:target {
+  outline: 1px solid var(--muted);
+  outline-offset: -1px;
+}
+
+/* Files */
+
+.meta {
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+#blob {
+  padding: 0.5em 0;
+  border: 1px solid var(--rule);
+}
+
+#blob .line {
+  display: inline-block;
+  min-width: 100%;
+}
+
+#blob .n {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  min-width: calc(var(--digits, 1) * 1ch);
+  padding: 0 1ch;
+  margin-right: 1ch;
+  text-align: right;
+  color: var(--line-number);
+  background-color: var(--bg);
+  text-decoration: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#blob .n:hover {
+  color: var(--link);
+}
+
+#blob .line:target,
+#blob .line.selected,
+#blob .line:target .n,
+#blob .line.selected .n {
+  background-color: var(--target);
+}
+
+/* The file tree and filter that augite.js adds to the files page */
+
+.filter {
+  margin-bottom: 1rem;
+}
+
+.filter input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 30rem;
+  padding: 0.3em 0.5em;
+  font: inherit;
+  color: var(--fg);
+  background-color: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+.tree, .tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree ul {
+  padding-left: 1.5ch;
+  border-left: 1px solid var(--rule);
+  margin-left: 0.5ch;
+}
+
+.tree summary {
+  cursor: pointer;
+}
+
+.tree li {
+  overflow-wrap: anywhere;
+  padding: 0.2em 0;
+  border-top: 1px solid var(--rule);
+}
+
+.tree > li:first-child {
+  border-top: 0;
+}
+
+.tree li li:last-child {
+  padding-bottom: 0;
+}
+
+.tree .size {
+  color: var(--muted);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Highlighting */
+
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-string { color: var(--hl-string); }
+.hl-number { color: var(--hl-number); }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-storage { color: var(--hl-storage); }
+.hl-type { color: var(--hl-type); }
+.hl-function { color: var(--hl-function); }
+.hl-tag { color: var(--hl-tag); }
+.hl-property { color: var(--hl-property); }
+.hl-variable { color: var(--hl-variable); }
+.hl-punctuation { color: var(--hl-punctuation); }
+.hl-invalid { color: var(--hl-invalid); text-decoration: underline wavy; }

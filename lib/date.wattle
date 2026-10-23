@@ -1,0 +1,49 @@
+(def- days ["Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"])
+(def- months ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+              "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"])
+
+(defn offset
+  """
+  Returns the offset from UTC in seconds of an ISO 8601 date such as
+  2024-01-02T03:04:05+09:00. A date ending in Z has an offset of 0.
+  """
+  [iso]
+  (if (string/has-suffix? "Z" iso)
+    0
+    (do
+      (def zone (string/slice iso -7))
+      (def sign (if (string/has-prefix? "-" zone) -1 1))
+      (* sign (+ (* 3600 (scan-number (string/slice zone 1 3)))
+                 (* 60 (scan-number (string/slice zone 4 6))))))))
+
+(defn short
+  "Formats the Unix time t as YYYY-MM-DD HH:MM in UTC."
+  [t]
+  (def d (os/date t))
+  (string/format "%d-%02d-%02d %02d:%02d"
+                 (d :year) (inc (d :month)) (inc (d :month-day))
+                 (d :hours) (d :minutes)))
+
+(defn utc
+  "Formats the Unix time t as an ISO 8601 date in UTC, such as for Atom."
+  [t]
+  (def d (os/date t))
+  (string/format "%d-%02d-%02dT%02d:%02d:%02dZ"
+                 (d :year) (inc (d :month)) (inc (d :month-day))
+                 (d :hours) (d :minutes) (d :seconds)))
+
+(defn long
+  """
+  Formats the Unix time t in the time zone of the ISO 8601 date iso, as in
+  the header of a commit, such as "Tue,  2 Jan 2024 03:04:05 +0900", with
+  the day padded by a space as stagit does.
+  """
+  [t iso]
+  (def off (offset iso))
+  (def d (os/date (+ t off)))
+  (def mins (div (math/abs off) 60))
+  (string/format "%s, %2d %s %d %02d:%02d:%02d %s%02d%02d"
+                 (get days (d :week-day)) (inc (d :month-day))
+                 (get months (d :month)) (d :year)
+                 (d :hours) (d :minutes) (d :seconds)
+                 (if (neg? off) "-" "+") (div mins 60) (mod mins 60)))

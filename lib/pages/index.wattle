@@ -1,0 +1,37 @@
+(import ../assets)
+(import ../date)
+(import ../html)
+
+(defn- row [repo]
+  (def info (repo :info))
+  (def href (string (html/url-path (info :name)) "/"))
+  (string "<tr><td class=\"logo\"><a href=\"" href "\">"
+          "<img src=\"" href "logo.png\" alt=\"\" width=\"32\" height=\"32\"></a></td>"
+          "<td class=\"name\"><a href=\"" href "\">" (html/escape (info :name)) "</a></td>"
+          "<td class=\"desc\">" (html/escape (or (info :description) "")) "</td>"
+          "<td class=\"date\">" (if-let [c (repo :last-commit)] (date/short (c :time)) "")
+          "</td></tr>\n"))
+
+(defn render
+  """
+  Returns the page listing repos. Each is a map of :info, as `git/info`
+  returns, and :last-commit, the newest commit or nil. The site of each
+  repository is expected in the directory named after it. generated is the
+  Unix time at which the page is generated.
+  """
+  [repos generated]
+  (def out !"")
+  (buffer/push!
+    out
+    "<header>\n<h1>Repositories</h1>\n</header>\n<hr>\n"
+    "<main id=\"content\">\n"
+    "<table id=\"index\">\n"
+    "<thead><tr><th></th><th>Name</th><th>Description</th><th>Last commit</th></tr></thead>\n"
+    "<tbody>\n")
+  (each repo repos
+    (buffer/push! out (row repo)))
+  (buffer/push! out "</tbody>\n</table>\n</main>\n")
+  (html/document "Repositories"
+                 (string "<link rel=\"stylesheet\" href=\"" assets/style-href "\">\n")
+                 (string out)
+                 :generated generated))

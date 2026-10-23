@@ -1,0 +1,180 @@
+(import ../deps/gum/test :prefix "")
+(import ./support/fixture)
+
+(import ../lib/git)
+
+(def- dir "tmp/git/fixture")
+(def- bare "tmp/git/fixture.git")
+(def- empty-dir "tmp/git/empty")
+
+(fixture/rmrf "tmp/git")
+(def- hashes (fixture/make-repo dir))
+(fixture/git "tmp/git" "2024-01-01T00:00:00Z" "clone" "-q" "--bare" "fixture" "fixture.git")
+(spit (string bare "/description") "The bare fixture\n")
+(fixture/mkdirp empty-dir)
+(fixture/git empty-dir "2024-01-01T00:00:00Z" "init" "-q")
+
+(defn- select-keys [m ks]
+  (from-pairs (keep #(when (has-key? m $) [$ (m $)]) ks)))
+
+(defn- by-path [files path]
+  (find #(= path ($ :path)) files))
+
+; Repository
+
+(deftest info-working-tree
+  (is (== {:name "fixture"
+           :description "A fixture for tests"
+           :owner "Ada Lovelace"
+           :url "https://example.org/fixture.git"}
+          (git/info dir))))
+
+(deftest info-bare
+  (is (== {:name "fixture" :description "The bare fixture"}
+          (git/info bare))))
+
+(deftest head-of-repo
+  (is (== (hashes :c5) (git/head dir)))
+  (is (== (hashes :c5) (git/head bare))))
+
+(deftest head-of-empty-repo
+  (is (== nil (git/head empty-dir))))
+
+; Commits
+
+(deftest commits-all
+  (def commits (git/commits dir))
+  (is (== [(hashes :c5) (hashes :c4) (hashes :c3) (hashes :c2) (hashes :c1)]
+          (map #($ :hash) commits)))
+  (is (== {:hash (hashes :c1)
+           :parents []
+           :author "Ada Lovelace"
+           :email "ada@example.org"
+           :time 1704132245
+           :date "2024-01-02T03:04:05+09:00"
+           :commit-time 1704132245
+           :subject "Add the first files"
+           :body "This is the body.\nIt has two lines."}
+          (last commits)))
+  (is (== [(hashes :c2) (hashes :c3)] ((get commits 1) :parents)))
+  (is (== "" ((first commits) :body))))
+
+(deftest commits-limit-and-rev
+  (is (== [(hashes :c5) (hashes :c4)]
+          (map #($ :hash) (git/commits dir :limit 2))))
+  (is (== [(hashes :c3) (hashes :c2) (hashes :c1)]
+          (map #($ :hash) (git/commits dir :rev "feature")))))
+
+(deftest commits-stats
+  (def commits (git/commits dir :stats? true))
+  (is (== [[1 0 1] [1 1 0] [1 1 0] [5 4 0] [3 5 0]]
+          (map #(vector ($ :files) ($ :added) ($ :deleted)) commits)))
+  (is (== "Add the first files" ((last commits) :subject)))
+  (is (== nil ((first (git/commits dir)) :files))))
+
+(deftest commits-empty-repo
+  (is (== [] (git/commits empty-dir))))
+
+(deftest commits-bad-rev
+  (def [ok? err] (protect (git/commits dir :rev "nonexistent")))
+  (is (not ok?))
+  (is (string/has-prefix? "git log failed: " err)))
+
+; Changes
+
+(deftest changes-root
+  (def files (git/changes dir (hashes :c1) nil))
+  (is (== ["README.md" "a.txt" "b.bin"] (map #($ :path) files)))
+  (is (== {:status "A"
+           :path "a.txt"
+           :old-path "a.txt"
+           :old-mode "000000"
+           :new-mode "100644"
+           :old-hash "0000000000000000000000000000000000000000"
+           :new-hash ((by-path (git/tree dir :rev (hashes :c1)) "a.txt") :hash)
+           :binary? false
+           :added 2
+           :deleted 0
+           :patch "@@ -0,0 +1,2 @@\n+hello\n+world\n"}
+          (by-path files "a.txt")))
+  (def bin (by-path files "b.bin"))
+  (is (bin :binary?))
+  (is (== nil (bin :added)))
+  (is (== nil (bin :patch))))
+
+(deftest changes-rename-and-names
+  (def files (git/changes dir (hashes :c2) (hashes :c1)))
+  (is (== #{"b.bin" "c.txt" "new\nline.txt" "sp ace.txt" "uni-é.txt"}
+          (hash-set |(map #($ :path) files))))
+  (def renamed (by-path files "c.txt"))
+  (is (== "R" (renamed :status)))
+  (is (== "a.txt" (renamed :old-path)))
+  (is (== [1 0] [(renamed :added) (renamed :deleted)]))
+  (is (== "@@ -1,2 +1,3 @@\n hello\n+there\n world\n" (renamed :patch)))
+  (is (== "@@ -0,0 +1 @@\n+newline\n" ((by-path files "new\nline.txt") :patch)))
+  (is (== "M" ((by-path files "b.bin") :status)))
+  (is ((by-path files "b.bin") :binary?)))
+
+(deftest changes-merge-against-first-parent
+  (def files (git/changes dir (hashes :c4) (hashes :c2)))
+  (is (== ["feature.txt"] (map #($ :path) files))))
+
+(deftest changes-delete
+  (def files (git/changes dir (hashes :c5) (hashes :c4)))
+  (is (== 1 (length files)))
+  (is (== {:status "D" :path "sp ace.txt" :added 0 :deleted 1
+           :patch "@@ -1 +0,0 @@\n-space\n"}
+          (select-keys (first files) [:status :path :added :deleted :patch]))))
+
+; Refs
+
+(deftest refs-branches-and-tags
+  (def refs (git/refs dir))
+  (is (== [[:branch "feature" (hashes :c3)]
+           [:branch "main" (hashes :c5)]
+           [:tag "v1" (hashes :c2)]
+           [:tag "v2" (hashes :c5)]]
+          (map #(vector ($ :kind) ($ :name) ($ :hash)) refs)))
+  (def v2 (find #(= "v2" ($ :name)) refs))
+  (is (== "Remove the file with a space" (v2 :subject)))
+  (is (== "Ada Lovelace" (v2 :author)))
+  (is (== "ada@example.org" (v2 :email)))
+  (is (== 1704477845 (v2 :time))))
+
+; Tree
+
+(deftest tree-head
+  (def entries (git/tree dir))
+  (is (== ["README.md" "b.bin" "c.txt" "feature.txt" "new\nline.txt" "uni-é.txt"]
+          (map #($ :path) entries)))
+  (is (== {:mode "100644" :type :blob :size 18 :path "c.txt"}
+          (select-keys (by-path entries "c.txt") [:mode :type :size :path]))))
+
+(deftest tree-empty-repo
+  (is (== [] (git/tree empty-dir))))
+
+; Objects
+
+(deftest objects-read
+  (def entries (git/tree dir))
+  (def objects (git/open-objects dir))
+  (defer (git/close-objects objects)
+    (is (== {:type :blob :size 18 :content "hello\nthere\nworld\n"}
+            (git/read-object objects ((by-path entries "c.txt") :hash))))
+    (is (== "\0\x01\x03binary"
+            ((git/read-object objects ((by-path entries "b.bin") :hash)) :content)))
+    (is (== nil (git/read-object objects "0000000000000000000000000000000000000001")))
+    (is (== "feature\n" ((git/read-object objects "HEAD:feature.txt") :content)))
+    (is (== :commit ((git/read-object objects (hashes :c1)) :type)))))
+
+(deftest objects-large
+  (def content (string/repeat "0123456789abcdef" 20000))
+  (spit (string dir "/large.txt") content)
+  (def hash (fixture/git dir "2024-01-01T00:00:00Z" "hash-object" "-w" "large.txt"))
+  (def objects (git/open-objects dir))
+  (defer (git/close-objects objects)
+    (is (== content ((git/read-object objects hash) :content)))
+    (is (== "feature\n" ((git/read-object objects "HEAD:feature.txt") :content)))))
+
+(defer (fixture/rmrf "tmp/git")
+  (run-tests!))

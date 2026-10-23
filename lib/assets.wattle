@@ -1,0 +1,37 @@
+; The files in res/ are read when augite is compiled, so that the executable
+; needs no other files.
+
+(defmacro- resource
+  "Expands to the contents of the file at path in res/, read at compile time."
+  [path]
+  (def here (os/realpath (dyn :current-file)))
+  (def lib (string/slice here 0 (last (string/find-all "/" here))))
+  (def root (string/slice lib 0 (last (string/find-all "/" lib))))
+  (string (slurp (string root "/res/" path))))
+
+(def style
+  "The stylesheet"
+  (resource "style.css"))
+
+(def script
+  "The script for the files page and file pages"
+  (resource "augite.js"))
+
+(defn- versioned
+  """
+  Returns path with a query of the start of the SHA-256 digest of content, so
+  that a browser fetches the file again when it changes.
+  """
+  [path content]
+  (def out !"")
+  (each b (string/slice (crypto/hash :sha256 content) 0 4)
+    (buffer/format! out "%02x" b))
+  (string path "?v=" out))
+
+(def style-href
+  "The link to the stylesheet from the top of a site"
+  (versioned "style.css" style))
+
+(def script-href
+  "The link to the script from the top of a site"
+  (versioned "augite.js" script))

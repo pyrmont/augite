@@ -1,0 +1,272 @@
+(import ../deps/gum/test :prefix "")
+(import ./support/fixture)
+
+(import ../lib/assets)
+(import ../lib/fs)
+(import ../lib/site)
+
+(def- dir "tmp/site/fixture")
+(def- out "tmp/site/out")
+
+(fixture/rmrf "tmp/site")
+(def- hashes (fixture/make-repo dir))
+
+(defn- page [path]
+  (string (slurp (string out "/" path))))
+
+(defn- exists? [path]
+  (not (nil? (os/stat (string out "/" path) :mode))))
+
+(defn- has? [s part]
+  (not (nil? (string/find part s))))
+
+(defn- build [& opts]
+  (site/write-repo dir :output out |opts))
+
+(defn- fresh-build [& opts]
+  (fixture/rmrf out)
+  (build |opts))
+
+; Pages
+
+(deftest writes-pages
+  (fresh-build)
+  (each path ["index.html" "log.html" "files.html" "refs.html" "atom.xml"
+              "tags.xml" "style.css" "file/README.md.html" "file/c.txt.html"
+              "file/b.bin.html" "file/new\nline.txt.html" "file/uni-é.txt.html"]
+    (is (exists? path) path))
+  (each [_ hash] (pairs hashes)
+    (is (exists? (string "commit/" hash ".html"))))
+  (is (not (exists? "log")))
+  (is (== (page "log.html") (page "index.html")))
+  (is (== assets/style (page "style.css")))
+  (is (== assets/script (page "augite.js")))
+  ; The links to the assets change when the assets do.
+  (is (string/has-prefix? "style.css?v=" assets/style-href))
+  (is (== (+ 12 8) (length assets/style-href))))
+
+(deftest symlinks-are-replaced
+  ; stagit's hooks link style.css to a shared stylesheet and index.html to
+  ; log.html. Neither link target is written to.
+  (fresh-build)
+  (fixture/rmrf "tmp/site/shared.css")
+  (spit "tmp/site/shared.css" "shared")
+  (os/rm (string out "/style.css"))
+  (os/rm (string out "/index.html"))
+  (os/symlink "../shared.css" (string out "/style.css"))
+  (os/symlink "log.html" (string out "/index.html"))
+  (build)
+  (is (== "shared" (string (slurp "tmp/site/shared.css"))))
+  (is (== :file (os/lstat (string out "/style.css") :mode)))
+  (is (== :file (os/lstat (string out "/index.html") :mode)))
+  (is (== assets/style (page "style.css"))))
+
+(deftest log-page
+  (fresh-build)
+  (def log (page "log.html"))
+  (is (has? log "<title>Log - fixture - A fixture for tests</title>"))
+  (is (has? log (string "<a href=\"commit/" (hashes :c4) ".html\">Merge branch &#39;feature&#39;</a>")))
+  (is (has? log "<td class=\"date\">2024-01-02 18:04</td>"))
+  (is (has? log "<td class=\"num files\">5</td><td class=\"num added\">+4</td><td class=\"num deleted\">-0</td>"))
+  (is (not (has? log "augite.js")))
+  (is (has? log "<a href=\"log.html\" aria-current=\"page\">Log</a>"))
+  (is (has? log "<a href=\"file/README.md.html\">README</a>"))
+  (is (has? log "git clone <a href=\"https://example.org/fixture.git\">"))
+  (is (not (has? log "class=\"pager\""))))
+
+(deftest log-paging
+  (fresh-build :per-page 2)
+  (is (exists? "log/2.html"))
+  (is (exists? "log/3.html"))
+  (is (not (exists? "log/4.html")))
+  (def second (page "log/2.html"))
+  (is (has? second (string "href=\"../commit/" (hashes :c3) ".html\"")))
+  (is (has? second "<a href=\"../log.html\" rel=\"prev\">Newer</a> | Page 2 of 3 | <a href=\"../log/3.html\" rel=\"next\">Older</a>"))
+  (is (has? second (string "<link rel=\"stylesheet\" href=\"../" assets/style-href "\">")))
+  ; Pages beyond the last are removed on the next run.
+  (build :per-page 50)
+  (is (not (exists? "log/2.html")))
+  (is (not (exists? "log/3.html"))))
+
+(deftest commit-page
+  (fresh-build)
+  (def c (page (string "commit/" (hashes :c2) ".html")))
+  (is (has? c "<title>Rename a.txt and add more files - fixture - A fixture for tests</title>"))
+  (is (has? c (string "<b>parent</b> <a href=\"../commit/" (hashes :c1) ".html\">")))
+  (is (has? c "<b>Date:</b>   Wed,  3 Jan 2024 03:04:05 +0900\n"))
+  (is (has? c "<tr><td class=\"R\">R</td><td><a href=\"#h1\">a.txt -&gt; c.txt</a></td><td> | </td><td class=\"num\">1</td><td><span class=\"i\">+</span><span class=\"d\"></span></td></tr>"))
+  (is (has? c "<p class=\"summary\">5 files changed, 4 insertions(+), 0 deletions(-)</p>"))
+  (is (has? c "<h3>diff --git a/<span id=\"h1\">a.txt</span> b/<a href=\"../file/c.txt.html\">c.txt</a></h3>"))
+  (is (has? c "<pre><a href=\"#h1-0\" id=\"h1-0\" class=\"h\">@@ -1,2 +1,3 @@</a>\n hello\n<a href=\"#h1-0-1\" id=\"h1-0-1\" class=\"i\">+there</a>\n world\n</pre>"))
+  (is (has? c "<p>Binary files differ.</p>"))
+  (is (has? c "<div class=\"scroll\"><table id=\"diffstat\">"))
+  (is (not (has? c "augite.js")))
+  (is (has? c "href=\"../file/new%0Aline.txt.html\""))
+  (is (has? c "href=\"../file/uni-%C3%A9.txt.html\""))
+  (is (not (has? c "aria-current"))))
+
+(deftest commit-page-root-and-merge
+  (fresh-build)
+  (def root (page (string "commit/" (hashes :c1) ".html")))
+  (is (not (has? root "<b>parent</b>")))
+  (is (has? root "\nAdd the first files\n\nThis is the body.\nIt has two lines.\n"))
+  (is (has? root "3 files changed, 5 insertions(+), 0 deletions(-)"))
+  (def merge (page (string "commit/" (hashes :c4) ".html")))
+  (is (has? merge (string "<b>parent</b> <a href=\"../commit/" (hashes :c2) ".html\">")))
+  (is (has? merge "1 file changed, 1 insertion(+), 0 deletions(-)")))
+
+(deftest commit-pages-are-not-rewritten
+  (fresh-build)
+  (def path (string out "/commit/" (hashes :c1) ".html"))
+  (spit path "kept")
+  (build)
+  (is (== "kept" (string (slurp path)))))
+
+(deftest files-page
+  (fresh-build)
+  (def files (page "files.html"))
+  (is (has? files "<tr data-path=\"c.txt\"><td class=\"mode\">-rw-r--r--</td><td class=\"name\"><a href=\"file/c.txt.html\">c.txt</a></td><td class=\"num size\">3L</td></tr>"))
+  (is (has? files "<td class=\"name\"><a href=\"file/b.bin.html\">b.bin</a></td><td class=\"num size\">9B</td>"))
+  (is (has? files "<tr data-path=\"new\nline.txt\">"))
+  (is (has? files (string "<script src=\"" assets/script-href "\" defer></script>")))
+  (is (has? files "<a href=\"files.html\" aria-current=\"page\">Files</a>")))
+
+(deftest file-pages
+  (fresh-build)
+  (def c (page "file/c.txt.html"))
+  (is (has? c "<title>c.txt - fixture - A fixture for tests</title>"))
+  (is (has? c "<p class=\"meta\">c.txt (18B)</p>"))
+  (is (has? c "<pre id=\"blob\" style=\"--digits: 1\"><code><span class=\"line\" id=\"l1\"><a href=\"#l1\" class=\"n\">1</a>hello</span>\n"))
+  (is (has? c "<span class=\"line\" id=\"l3\"><a href=\"#l3\" class=\"n\">3</a>world</span>\n</code></pre>"))
+  (is (has? c (string "<script src=\"../" assets/script-href "\" defer></script>")))
+  (is (has? c (string "<link rel=\"stylesheet\" href=\"../" assets/style-href "\">")))
+  (is (has? (page "file/b.bin.html") "<p>Binary file.</p>")))
+
+(deftest file-pages-highlighted
+  (def grammars "tmp/site/grammars")
+  (fixture/mkdirp grammars)
+  (spit (string grammars "/text.tmLanguage.json")
+        (string "{\"scopeName\": \"text.test\", \"fileTypes\": [\"txt\"],"
+                " \"patterns\": [{\"match\": \"\\\\bhello\\\\b\", \"name\": \"keyword.test\"}]}"))
+  ; A grammar that cannot be loaded is skipped with a warning.
+  (spit (string grammars "/broken.json") "{")
+  (fresh-build :grammars grammars)
+  (is (has? (page "file/c.txt.html")
+            "<a href=\"#l1\" class=\"n\">1</a><span class=\"hl-keyword\">hello</span></span>\n"))
+  (is (has? (page "file/README.md.html") "<a href=\"#l1\" class=\"n\">1</a># Fixture</span>\n"))
+  (fresh-build)
+  (is (has? (page "file/c.txt.html") "<a href=\"#l1\" class=\"n\">1</a>hello</span>\n")))
+
+(deftest file-pages-cached
+  (def grammars "tmp/site/cache-grammars")
+  (def cache "tmp/site/cache")
+  (def grammar "tmp/site/cache-grammars/text.tmLanguage.json")
+  (fixture/rmrf cache)
+  (fixture/mkdirp grammars)
+  (spit grammar (string "{\"scopeName\": \"text.test\", \"fileTypes\": [\"txt\"],"
+                        " \"patterns\": [{\"match\": \"\\\\bhello\\\\b\", \"name\": \"keyword.test\"}]}"))
+  (defn entries [] (sort (filter #(not= "notes" $) (os/dir cache))))
+  (fresh-build :grammars grammars :cache cache)
+  (def first-entries (entries))
+  ; One for each .txt file.
+  (is (== 4 (length first-entries)))
+  (is (has? (page "file/c.txt.html") "<span class=\"hl-keyword\">hello</span>"))
+  ; A second run reads the cache rather than highlighting again.
+  (each name first-entries
+    (def file (string cache "/" name))
+    (spit file (string/replace-all "hello" "CACHED" (slurp file))))
+  (spit (string cache "/0123-4567") "h\nstale")
+  (spit (string cache "/notes") "not an entry")
+  (build :grammars grammars :cache cache)
+  (is (has? (page "file/c.txt.html") "<a href=\"#l1\" class=\"n\">1</a><span class=\"hl-keyword\">CACHED</span></span>"))
+  ; An entry without a line for each line of the file is replaced.
+  (each name first-entries
+    (spit (string cache "/" name) "h"))
+  (build :grammars grammars :cache cache)
+  (is (has? (page "file/c.txt.html") "<span class=\"hl-keyword\">hello</span>"))
+  (is (== first-entries (entries)))
+  (is (== "not an entry" (string (slurp (string cache "/notes")))))
+  ; A change to a grammar leaves the cached files unused.
+  (spit grammar (string "{\"scopeName\": \"text.test\", \"fileTypes\": [\"txt\"],"
+                        " \"patterns\": [{\"match\": \"\\\\bworld\\\\b\", \"name\": \"keyword.test\"}]}"))
+  (build :grammars grammars :cache cache)
+  (is (has? (page "file/c.txt.html") "<span class=\"hl-keyword\">world</span>"))
+  (is (== 4 (length (entries))))
+  (is (empty? (filter #(has-value? first-entries $) (entries)))))
+
+(deftest file-pages-of-removed-files-are-deleted
+  (fresh-build)
+  (spit (string out "/file/gone.txt.html") "old")
+  (fs/mkdirp (string out "/file/old/dir"))
+  (spit (string out "/file/old/dir/gone.html") "old")
+  (spit (string out "/file/notes.txt") "not a page")
+  (build)
+  (is (not (exists? "file/gone.txt.html")))
+  (is (not (exists? "file/old")))
+  (is (exists? "file/notes.txt"))
+  (is (exists? "file/c.txt.html")))
+
+(deftest refs-page
+  (fresh-build)
+  (def refs (page "refs.html"))
+  (is (has? refs "<h2>Branches</h2>"))
+  (is (has? refs "<tr><td>main</td><td>2024-01-05 18:04</td><td>Ada Lovelace</td></tr>\n<tr><td>feature</td>"))
+  (is (has? refs "<tr><td>v2</td><td>2024-01-05 18:04</td><td>Ada Lovelace</td></tr>\n<tr><td>v1</td>")))
+
+(deftest feeds
+  (fresh-build)
+  (def atom (page "atom.xml"))
+  (is (has? atom "<title>fixture, branch HEAD</title>\n<subtitle>A fixture for tests</subtitle>\n"))
+  (is (has? atom (string "<id>" (hashes :c5) "</id>\n<published>2024-01-05T18:04:05Z</published>")))
+  (is (has? atom (string "<link rel=\"alternate\" type=\"text/html\" href=\"commit/" (hashes :c5) ".html\" />")))
+  (is (has? atom "Author: Ada Lovelace &lt;ada@example.org&gt;\nDate:   Sat,  6 Jan 2024 03:04:05 +0900\n\nRemove the file with a space\n\n</content>"))
+  (is (== 5 (length (string/find-all "<entry>" atom))))
+  (def tags (page "tags.xml"))
+  (is (has? tags "<title type=\"text\">[v2] Remove the file with a space</title>"))
+  (is (has? tags "<title type=\"text\">[v1] Rename a.txt and add more files</title>"))
+  (is (< (string/find "[v2]" tags) (string/find "[v1]" tags))))
+
+(deftest feeds-with-base-url
+  (fresh-build :base-url "https://example.org/fixture")
+  (def atom (page "atom.xml"))
+  (is (has? atom "<link rel=\"alternate\" type=\"text/html\" href=\"https://example.org/fixture/\" />"))
+  (is (has? atom (string "href=\"https://example.org/fixture/commit/" (hashes :c5) ".html\"")))
+  (is (has? (page "tags.xml") "href=\"https://example.org/fixture/commit/")))
+
+(deftest empty-repo
+  (def empty-dir "tmp/site/empty")
+  (def empty-out "tmp/site/empty-out")
+  (fixture/mkdirp empty-dir)
+  (fixture/git empty-dir "2024-01-01T00:00:00Z" "init" "-q")
+  (site/write-repo empty-dir :output empty-out)
+  (is (os/stat (string empty-out "/log.html")))
+  (is (os/stat (string empty-out "/files.html")))
+  (is (not (has? (string (slurp (string empty-out "/atom.xml"))) "<entry>"))))
+
+(deftest bad-per-page
+  (def [ok? err] (protect (site/write-repo dir :output out :per-page 0)))
+  (is (not ok?))
+  (is (== "invalid number of commits per page: 0" err)))
+
+; Index
+
+(deftest index-page
+  (def empty-dir "tmp/site/index/empty")
+  (def index-out "tmp/site/index/out")
+  (fixture/mkdirp empty-dir)
+  (fixture/git empty-dir "2024-01-01T00:00:00Z" "init" "-q")
+  (site/write-index [dir empty-dir] :output index-out)
+  (def index (string (slurp (string index-out "/index.html"))))
+  (is (has? index "<title>Repositories</title>"))
+  (is (has? index "<tr><td class=\"logo\"><a href=\"fixture/\"><img src=\"fixture/logo.png\" alt=\"\" width=\"32\" height=\"32\"></a></td><td class=\"name\"><a href=\"fixture/\">fixture</a></td><td class=\"desc\">A fixture for tests</td><td class=\"date\">2024-01-05 18:04</td></tr>\n<tr><td class=\"logo\"><a href=\"empty/\">"))
+  (is (has? index ">empty</a></td><td class=\"desc\">Unnamed repository;"))
+  (is (has? index "<td class=\"date\"></td></tr>"))
+  (is (== assets/style (string (slurp (string index-out "/style.css"))))))
+
+(deftest index-bad-dir
+  (def [ok? err] (protect (site/write-index [dir "tmp/site/missing"] :output "tmp/site/index/out")))
+  (is (not ok?))
+  (is (== "not a directory: tmp/site/missing" err)))
+
+(defer (fixture/rmrf "tmp/site")
+  (run-tests!))

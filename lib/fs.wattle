@@ -1,0 +1,61 @@
+(defn parent
+  "Returns the directory part of path, or nil if path has none."
+  [path]
+  (when-let [i (last (string/find-all "/" path))]
+    (if (zero? i) "/" (string/slice path 0 i))))
+
+(defn mkdirp
+  "Creates the directory path and any missing parents."
+  [path]
+  (var dir nil)
+  (each part (string/split "/" path)
+    (set dir (if (nil? dir) part (string dir "/" part)))
+    (unless (or (empty? dir) (os/stat dir :mode))
+      (os/mkdir dir))))
+
+(defn write
+  """
+  Writes content to path, creating missing directories. A file that already
+  has content is left unchanged. A symbolic link at path is replaced, not
+  written through. Returns true if the file was written.
+  """
+  [path content]
+  (when (= :link (os/lstat path :mode))
+    (os/rm path))
+  (def current (when (= :file (os/stat path :mode)) (slurp path)))
+  (unless (and current (= (string current) (string content)))
+    (when-let [dir (parent path)]
+      (mkdirp dir))
+    (spit path content)
+    true))
+
+(defn files-under
+  """
+  Returns an array of the paths of the files under dir, relative to dir.
+  Returns an empty array if dir does not exist.
+  """
+  [dir]
+  (def out ![])
+  (defn walk [rel]
+    (def path (if rel (string dir "/" rel) dir))
+    (each name (sort (os/dir path))
+      (def child (if rel (string rel "/" name) name))
+      (case (os/lstat (string dir "/" child) :mode)
+        :directory (walk child)
+        (array/push! out child))))
+  (when (= :directory (os/stat dir :mode))
+    (walk nil))
+  out)
+
+(defn rm-empty-dirs
+  "Removes the empty directories under dir, but not dir itself."
+  [dir]
+  (defn prune [path]
+    (each name (os/dir path)
+      (def child (string path "/" name))
+      (when (= :directory (os/lstat child :mode))
+        (prune child)
+        (when (empty? (os/dir child))
+          (os/rmdir child)))))
+  (when (= :directory (os/stat dir :mode))
+    (prune dir)))

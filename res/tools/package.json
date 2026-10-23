@@ -1,0 +1,10 @@
+{
+  "name": "augite-tools",
+  "private": true,
+  "description": "Development tools for augite. Not needed to build or run it.",
+  "type": "module",
+  "dependencies": {
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  }
+}

@@ -1,0 +1,194 @@
+(import ./assets)
+(import ./fs)
+(import ./git)
+(import ./highlight)
+(import ./pages/commit)
+(import ./pages/feeds)
+(import ./pages/file)
+(import ./pages/files)
+(import ./pages/index)
+(import ./pages/log)
+(import ./pages/refs)
+
+; Files larger than this are not shown on their pages.
+(def- max-file-size (* 1024 1024))
+
+; The number of commits in atom.xml.
+(def- feed-size 100)
+
+; The files linked from the navigation, by the first name present in the tree,
+; as in stagit.
+(def- readmes ["README" "README.md"])
+(def- licenses ["LICENSE" "LICENSE.md" "COPYING"])
+
+(defn- assert-dir [path]
+  (assertf (= :directory (os/stat path :mode)) "not a directory: %s" path))
+
+(defn- nav [paths]
+  (def items ![[:log "Log" "log.html"]
+               [:files "Files" "files.html"]
+               [:refs "Refs" "refs.html"]])
+  (when (has-value? paths ".gitmodules")
+    (array/push! items [:submodules "Submodules" "file/.gitmodules.html"]))
+  (each [text names] [["README" readmes] ["LICENSE" licenses]]
+    (when-let [name (find #(has-value? paths $) names)]
+      (array/push! items [nil text (string "file/" name ".html")])))
+  (vec items))
+
+(defn- text?
+  "Returns true if content has no NUL in its first 8000 bytes, as Git judges."
+  [content]
+  (nil? (string/find "\0" (string/slice content 0 (min 8000 (length content))))))
+
+(defn- line-count [content]
+  (+ (length (string/find-all "\n" content))
+     (if (or (empty? content) (string/has-suffix? "\n" content)) 0 1)))
+
+(defn- read-blob
+  """
+  Returns a map describing the blob for entry: :size, :text?, :too-large?
+  and, for text, :lines and :content. A file is too large to show on its page
+  if it is larger than max-file-size, but its lines are still counted.
+  """
+  [objects entry]
+  (def size (entry :size))
+  (def content ((git/read-object objects (entry :hash)) :content))
+  (if (text? content)
+    {:size size
+     :text? true
+     :too-large? (> size max-file-size)
+     :lines (line-count content)
+     :content content}
+    {:size size :text? false :too-large? false}))
+
+(defn- strip-html [name]
+  (when (string/has-suffix? ".html" name)
+    (string/slice name 0 (- (length name) 5))))
+
+(defn- write-log
+  """
+  Writes the log pages, per-page commits to a page, with the first page also
+  written to index.html, and removes the pages beyond the last.
+  """
+  [out ctx commits per-page]
+  (def total (max 1 (math/ceil (/ (length commits) per-page))))
+  (for i 0 total
+    (def n (inc i))
+    (def start (* i per-page))
+    (def page (log/render ctx (slice commits start (min (length commits) (+ start per-page)))
+                          n total))
+    (fs/write (string out "/" (log/href n)) page)
+    (when (= 1 n)
+      (fs/write (string out "/index.html") page)))
+  (each name (fs/files-under (string out "/log"))
+    (when-let [n (-?> name strip-html scan-number)]
+      (when (> n total)
+        (os/rm (string out "/log/" name))))))
+
+(defn- write-commits
+  "Writes the page for each commit that does not have one."
+  [out ctx repo-dir commits]
+  (each c commits
+    (def path (string out "/commit/" (c :hash) ".html"))
+    (unless (os/stat path :mode)
+      (def files (git/changes repo-dir (c :hash) (first (c :parents))))
+      (fs/write path (commit/render ctx c files)))))
+
+(defn- write-files
+  """
+  Writes files.html and a page for each file in the tree, highlighted with
+  grammars where one applies, and removes the pages of files that are no
+  longer in it. cache, from highlight/open-cache, may be nil.
+  """
+  [out ctx repo-dir entries grammars cache]
+  (def objects (git/open-objects repo-dir))
+  (def blobs !{})
+  (defer (git/close-objects objects)
+    (each entry entries
+      (when (= :blob (entry :type))
+        (def blob (read-blob objects entry))
+        (put! blobs (entry :path) blob)
+        (def highlighted (when (and (blob :text?) (not (blob :too-large?)))
+                           (highlight/highlight grammars (entry :path) (blob :content)
+                                                :cache cache :hash (entry :hash))))
+        (fs/write (string out "/file/" (entry :path) ".html")
+                  (file/render ctx entry (if highlighted
+                                           (assoc blob :highlighted highlighted)
+                                           blob))))))
+  (fs/write (string out "/files.html") (files/render ctx entries blobs))
+  (each name (fs/files-under (string out "/file"))
+    (when-let [path (strip-html name)]
+      (unless (has-key? blobs path)
+        (os/rm (string out "/file/" name)))))
+  (fs/rm-empty-dirs (string out "/file")))
+
+(defn- tag-commits
+  """
+  Returns a vector of the tags in refs, newest first, each as a vector of its
+  name and its commit. The commits are taken from commits where possible.
+  """
+  [repo-dir refs commits]
+  (def by-hash (from-pairs (map #(vector ($ :hash) $) commits)))
+  (vec (map (fn [ref]
+              [(ref :name)
+               (or (get by-hash (ref :hash))
+                   (first (git/commits repo-dir :rev (ref :hash) :limit 1)))])
+            (refs/newest-first (filter #(= :tag ($ :kind)) refs)))))
+
+(defn- with-slash [url]
+  (cond
+    (or (nil? url) (empty? url)) ""
+    (string/has-suffix? "/" url) url
+    (string url "/")))
+
+(defn write-repo
+  """
+  Writes the site for the Git repository at repo-dir into the directory
+  output. grammars, if not nil, is the directory of the TextMate grammars
+  with which to highlight file pages, and cache, if not nil, the directory in
+  which to keep highlighted files between runs.
+  """
+  [repo-dir & {:keys [output grammars cache per-page base-url]
+               :or {output "." per-page 50}}]
+  (assert-dir repo-dir)
+  (assertf (pos? per-page) "invalid number of commits per page: %d" per-page)
+  (def grammar-list (highlight/load-grammars grammars))
+  (def commits (git/commits repo-dir :stats? true))
+  (def refs (git/refs repo-dir))
+  (def entries (git/tree repo-dir))
+  (def paths (hash-set |(map #($ :path) entries)))
+  (def ctx {:info (git/info repo-dir)
+            :nav (nav paths)
+            :paths paths
+            :base-url (with-slash base-url)
+            :generated (os/time)})
+  (def out output)
+  (fs/mkdirp out)
+  (fs/write (string out "/style.css") assets/style)
+  (fs/write (string out "/augite.js") assets/script)
+  (write-log out ctx commits per-page)
+  (write-commits out ctx repo-dir commits)
+  (def hl-cache (highlight/open-cache cache grammar-list))
+  (write-files out ctx repo-dir entries grammar-list hl-cache)
+  (highlight/close-cache hl-cache)
+  (fs/write (string out "/refs.html") (refs/render ctx refs))
+  (fs/write (string out "/atom.xml")
+            (feeds/atom ctx (slice commits 0 (min feed-size (length commits)))))
+  (fs/write (string out "/tags.xml")
+            (feeds/tags ctx (tag-commits repo-dir refs commits))))
+
+(defn write-index
+  """
+  Writes the list of the Git repositories in repo-dirs into the directory
+  output.
+  """
+  [repo-dirs & {:keys [output] :or {output "."}}]
+  (each repo-dir repo-dirs
+    (assert-dir repo-dir))
+  (def repos (map (fn [repo-dir]
+                    {:info (git/info repo-dir)
+                     :last-commit (first (git/commits repo-dir :limit 1))})
+                  repo-dirs))
+  (fs/mkdirp output)
+  (fs/write (string output "/style.css") assets/style)
+  (fs/write (string output "/index.html") (index/render repos (os/time))))

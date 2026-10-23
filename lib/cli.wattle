@@ -1,0 +1,90 @@
+(import ../deps/gum/args)
+(import ./site)
+
+(def- repo-config
+  {:help "Write the site for one repository."
+   :rules [:repo-dir     {:help  "The path of the Git repository."
+                          :proxy "repo-dir"
+                          :req?  true}
+           "--output"    {:help    "The directory to write the site into."
+                          :default "."
+                          :kind    :single
+                          :proxy   "dir"
+                          :short   "o"}
+           "--grammars"  {:help  "The directory of TextMate grammars."
+                          :kind  :single
+                          :proxy "dir"
+                          :short "g"}
+           "--cache"     {:help  (string "The directory in which to keep highlighted files "
+                                         "between runs.")
+                          :kind  :single
+                          :proxy "dir"
+                          :short "c"}
+           "--per-page"  {:help    "The number of commits per log page."
+                          :default 50
+                          :kind    :single
+                          :proxy   "n"
+                          :short   "p"
+                          :value   :integer}
+           "--base-url"  {:help  (string "The URL of the site, used to make the links in "
+                                         "the Atom feeds absolute.")
+                          :kind  :single
+                          :proxy "url"
+                          :short "u"}
+           "-------------------------------------------"]})
+
+(def- index-config
+  {:help "Write the list of repositories."
+   :rules [:repo-dirs {:help   "The paths of the Git repositories."
+                       :proxy  "repo-dir"
+                       :req?   true
+                       :splat? true}
+           "--output" {:help    "The directory to write the index into."
+                       :default "."
+                       :kind    :single
+                       :proxy   "dir"
+                       :short   "o"}
+           "-------------------------------------------"]})
+
+(def config
+  "The configuration for Argy-Bargy"
+  {:subs ["repo"  repo-config
+          "index" index-config]
+   :info {:about "Generate a static site for one or more Git repositories."}})
+
+(defn run [args]
+  (def parsed (args/parse-args "augite" config args))
+  (def err (parsed :err))
+  (def help (parsed :help))
+  (cond
+    (not (empty? help))
+    (do
+      (prin help)
+      (os/exit (if (or (get-in parsed [:opts "help"])
+                       (get-in parsed [:sub :opts "help"]))
+                 0 1)))
+    (not (empty? err))
+    (do
+      (eprin err)
+      (os/exit 1))
+    (do
+      (def sub (parsed :sub))
+      (def opts (sub :opts))
+      (def params (sub :params))
+      (try
+        (case (sub :cmd)
+          "repo"
+          (site/write-repo (params :repo-dir)
+                           :output (opts "output")
+                           :grammars (opts "grammars")
+                           :cache (opts "cache")
+                           :per-page (opts "per-page")
+                           :base-url (opts "base-url"))
+          "index"
+          (site/write-index (params :repo-dirs)
+                            :output (opts "output")))
+        ([e]
+          (eprint "augite: " e)
+          (os/exit 1))))))
+
+(defn main [script & args] (run args))

@@ -1,0 +1,34 @@
+(import ../date)
+(import ../html)
+
+(defn- table [id title refs]
+  (def out !"")
+  (buffer/push! out
+                "<h2>" title "</h2>\n"
+                "<table id=\"" id "\">\n"
+                "<thead><tr><th>Name</th><th>Last commit date</th><th>Author</th></tr></thead>\n"
+                "<tbody>\n")
+  (each ref refs
+    (buffer/push! out
+                  "<tr><td>" (html/escape (ref :name)) "</td>"
+                  "<td>" (date/short (ref :time)) "</td>"
+                  "<td>" (html/escape (ref :author)) "</td></tr>\n"))
+  (buffer/push! out "</tbody>\n</table>\n")
+  (string out))
+
+(defn newest-first
+  "Returns refs sorted by the time of their commits, newest first."
+  [refs]
+  (sort-by #(- ($ :time)) refs))
+
+(defn render
+  "Returns the page listing the branches and tags in refs."
+  [ctx refs]
+  (def branches (newest-first (filter #(= :branch ($ :kind)) refs)))
+  (def tags (newest-first (filter #(= :tag ($ :kind)) refs)))
+  (def out !"")
+  (unless (empty? branches)
+    (buffer/push! out (table "branches" "Branches" branches)))
+  (unless (empty? tags)
+    (buffer/push! out (table "tags" "Tags" tags)))
+  (html/page ctx "" "Refs" :refs (string out)))

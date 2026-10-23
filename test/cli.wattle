@@ -1,0 +1,66 @@
+(import ../deps/gum/test :prefix "")
+
+; Helpers
+
+; The tests run the program with the Wattle interpreter that is running them.
+(def- program [(dyn :executable) "lib/cli.wattle"])
+
+(defn- shell-capture [args]
+  (def x (os/spawn (array/concat! ![] program args) :p {:out :pipe :err :pipe}))
+  (def o (:read (x :out) :all))
+  (def e (:read (x :err) :all))
+  (:wait x)
+  [(get x :return-code) o e])
+
+; Tests
+
+(deftest cli-no-args
+  (def [exit-code test-out test-err] (shell-capture []))
+  (is (== 1 exit-code))
+  (is (== nil test-out))
+  (is (== "augite: no subcommand provided\nTry 'augite --help' for more information.\n"
+          test-err)))
+
+(deftest cli-help
+  (def [exit-code test-out test-err] (shell-capture ["--help"]))
+  (is (== 0 exit-code))
+  (is (string/has-prefix? "Usage: augite <subcommand>" test-out))
+  (is (== nil test-err)))
+
+(deftest cli-repo-help
+  (def [exit-code test-out test-err] (shell-capture ["repo" "--help"]))
+  (is (== 0 exit-code))
+  (is (string/has-prefix? "Usage: augite repo " test-out))
+  (is (== nil test-err)))
+
+(deftest cli-index-help
+  (def [exit-code test-out test-err] (shell-capture ["help" "index"]))
+  (is (== 0 exit-code))
+  (is (string/has-prefix? "Usage: augite index " test-out))
+  (is (== nil test-err)))
+
+(deftest cli-repo-missing-dir
+  (def [exit-code test-out test-err] (shell-capture ["repo"]))
+  (is (== 1 exit-code))
+  (is (== nil test-out))
+  (is (string/has-prefix? "augite repo: repo-dir is required\n" test-err)))
+
+(deftest cli-repo-bad-per-page
+  (def [exit-code test-out test-err] (shell-capture ["repo" "-p" "x" "."]))
+  (is (== 1 exit-code))
+  (is (== nil test-out))
+  (is (string/has-prefix? "augite repo: 'x' is invalid value for -p\n" test-err)))
+
+(deftest cli-repo-not-a-directory
+  (def [exit-code test-out test-err] (shell-capture ["repo" "test/missing"]))
+  (is (== 1 exit-code))
+  (is (== nil test-out))
+  (is (== "augite: not a directory: test/missing\n" test-err)))
+
+(deftest cli-unknown-subcommand
+  (def [exit-code test-out test-err] (shell-capture ["bogus"]))
+  (is (== 1 exit-code))
+  (is (== nil test-out))
+  (is (string/has-prefix? "augite: unrecognized subcommand 'bogus'\n" test-err)))
+
+(run-tests!)

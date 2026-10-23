@@ -1,0 +1,107 @@
+; Builds Git repositories for the tests. Git runs without the user's config,
+; so that signing, hooks and the like do not apply, and with fixed names and
+; dates, so that the commits are the same on each run.
+
+(defn rmrf
+  "Removes path and, if it is a directory, everything under it."
+  [path]
+  (case (os/lstat path :mode)
+    :directory (do
+                 (each subpath (os/dir path)
+                   (rmrf (string path "/" subpath)))
+                 (os/rmdir path))
+    nil nil
+    (os/rm path)))
+
+(defn mkdirp
+  "Creates the directory path and any missing parents."
+  [path]
+  (var dir nil)
+  (each part (string/split "/" path)
+    (set dir (if (nil? dir) part (string dir "/" part)))
+    (unless (or (empty? dir) (os/stat dir :mode))
+      (os/mkdir dir))))
+
+(defn- env [date]
+  (merge (os/environ)
+         {"GIT_CONFIG_GLOBAL" "/dev/null"
+          "GIT_CONFIG_NOSYSTEM" "1"
+          "GIT_AUTHOR_NAME" "Ada Lovelace"
+          "GIT_AUTHOR_EMAIL" "ada@example.org"
+          "GIT_COMMITTER_NAME" "Ada Lovelace"
+          "GIT_COMMITTER_EMAIL" "ada@example.org"
+          "GIT_AUTHOR_DATE" date
+          "GIT_COMMITTER_DATE" date}))
+
+(defn git
+  "Runs git with args in dir, with the commit date set to date."
+  [dir date & args]
+  (def proc (os/spawn ["git" |args] :pe
+                      (merge (env date) {:cd dir :out :pipe :err :pipe})))
+  (def [out err] (ev/gather (:read (proc :out) :all) (:read (proc :err) :all)))
+  (def code (os/proc-wait proc))
+  (os/proc-close proc)
+  (assertf (zero? code) "git %s failed: %s" (first args) (string err))
+  (string/trim (string (or out ""))))
+
+(defn- write [dir path content]
+  (spit (string dir "/" path) content))
+
+(def- dates
+  ["2024-01-02T03:04:05+09:00"
+   "2024-01-03T03:04:05+09:00"
+   "2024-01-04T03:04:05+09:00"
+   "2024-01-05T03:04:05+09:00"
+   "2024-01-06T03:04:05+09:00"])
+
+(defn make-repo
+  """
+  Creates a repository in dir, which must not exist, and returns a map of
+  the hashes of its commits, :c1 to :c5, oldest first:
+
+  1. Adds README.md, a.txt and the binary b.bin, with a message body.
+  2. Renames a.txt to c.txt and changes it, changes b.bin, and adds files
+     whose names have a space, a newline and a non-ASCII character. Tagged
+     v1, a lightweight tag.
+  3. On the branch feature, adds feature.txt.
+  4. Merges feature into main.
+  5. Deletes the file with a space in its name. Tagged v2, an annotated tag.
+
+  The repository's .git directory has description, owner and url files.
+  """
+  [dir]
+  (mkdirp dir)
+  (def d dates)
+  (git dir (d 0) "init" "-q" "-b" "main")
+  (write dir "README.md" "# Fixture\n\nA repository for tests.\n")
+  (write dir "a.txt" "hello\nworld\n")
+  (write dir "b.bin" "\0\x01\x02binary")
+  (git dir (d 0) "add" ".")
+  (git dir (d 0) "commit" "-q" "-m" "Add the first files\n\nThis is the body.\nIt has two lines.")
+  (def c1 (git dir (d 0) "rev-parse" "HEAD"))
+  (git dir (d 1) "mv" "a.txt" "c.txt")
+  (write dir "c.txt" "hello\nthere\nworld\n")
+  (write dir "b.bin" "\0\x01\x03binary")
+  (write dir "sp ace.txt" "space\n")
+  (write dir "new\nline.txt" "newline\n")
+  (write dir "uni-é.txt" "unicode\n")
+  (git dir (d 1) "add" "-A")
+  (git dir (d 1) "commit" "-q" "-m" "Rename a.txt and add more files")
+  (def c2 (git dir (d 1) "rev-parse" "HEAD"))
+  (git dir (d 1) "tag" "v1")
+  (git dir (d 2) "checkout" "-q" "-b" "feature")
+  (write dir "feature.txt" "feature\n")
+  (git dir (d 2) "add" "feature.txt")
+  (git dir (d 2) "commit" "-q" "-m" "Add a feature")
+  (def c3 (git dir (d 2) "rev-parse" "HEAD"))
+  (git dir (d 3) "checkout" "-q" "main")
+  (git dir (d 3) "merge" "-q" "--no-ff" "-m" "Merge branch 'feature'" "feature")
+  (def c4 (git dir (d 3) "rev-parse" "HEAD"))
+  (git dir (d 4) "rm" "-q" "sp ace.txt")
+  (git dir (d 4) "commit" "-q" "-m" "Remove the file with a space")
+  (def c5 (git dir (d 4) "rev-parse" "HEAD"))
+  (git dir (d 4) "tag" "-a" "v2" "-m" "Version 2")
+  (write dir ".git/description" "A fixture for tests\n")
+  (write dir ".git/owner" "Ada Lovelace\n")
+  (write dir ".git/url" "https://example.org/fixture.git\n")
+  {:c1 c1 :c2 c2 :c3 c3 :c4 c4 :c5 c5})

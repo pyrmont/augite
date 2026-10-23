@@ -1,0 +1,60 @@
+#!/bin/sh
+# A post-receive hook that writes a repository's site with augite. Install it
+# as hooks/post-receive in each bare repository. Git runs it with the
+# repository as the working directory.
+#
+# The site is rebuilt in the background, so a push returns at once. Only one
+# rebuild runs at a time for a repository. A push during a rebuild leaves a
+# marker, and the running rebuild goes round again, so the pushes made in the
+# meantime are covered by one more rebuild. Output goes to augite.log in the
+# repository, and highlighted files are kept in augite-cache there.
+
+set -e
+
+repo=$(pwd)
+name=$(basename "$repo" .git)
+public="/var/www/code.inqk.net/public"
+out="$public/$name"
+grammars="/usr/local/share/augite/grammars"
+cache="$repo/augite-cache"
+
+pending="$repo/augite.pending"
+lock="$repo/augite.lock"
+log="$repo/augite.log"
+
+if [ "$1" != "--rebuild" ]; then
+  touch "$pending"
+  # Git waits for the hook's output to close, so the rebuild is detached from
+  # it.
+  setsid "$0" --rebuild </dev/null >>"$log" 2>&1 &
+  exit 0
+fi
+
+unset GIT_DIR
+
+rebuild() {
+  echo "$(date -u '+%Y-%m-%d %H:%M:%S') rebuilding $name"
+  augite repo -o "$out" -g "$grammars" -c "$cache" -u "https://code.inqk.net/$name/" "$repo"
+
+  # augite links to logo.png and favicon.png but does not write them.
+  ln -sf "../assets/images/$name-logo.png" "$out/logo.png"
+  ln -sf "../assets/images/$name-favicon.png" "$out/favicon.png"
+
+  # The list of repositories, which links to each repository's logo.png.
+  augite index -o "$public" /var/git/*.git
+  echo "$(date -u '+%Y-%m-%d %H:%M:%S') done"
+}
+
+exec 9>"$lock"
+while :; do
+  # A rebuild that is already running will see the marker.
+  flock -n 9 || exit 0
+  while [ -e "$pending" ]; do
+    rm -f "$pending"
+    rebuild || echo "$(date -u '+%Y-%m-%d %H:%M:%S') failed"
+  done
+  flock -u 9
+  # A push between the last check and the unlock left a marker, but its own
+  # rebuild found the lock taken and exited.
+  [ -e "$pending" ] || break
+done
