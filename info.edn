@@ -7,4 +7,25 @@
  :url "https://github.com/pyrmont/augite"
  :exes [{:type :native
          :name "augite"
-         :entry "lib/cli.wattle"}]}
+         :entry "lib/cli.wattle"}]
+ :libs [{:type :native
+         :name "onig"
+         :root "lib/hl/onig.zig"
+         :for ["augite"]
+         :c-sources ["deps/oniguruma/src/regerror.c"
+                     "deps/oniguruma/src/regparse.c"
+                     "deps/oniguruma/src/regcomp.c"
+                     "deps/oniguruma/src/regexec.c"
+                     "deps/oniguruma/src/regenc.c"
+                     "deps/oniguruma/src/regsyntax.c"
+                     "deps/oniguruma/src/st.c"
+                     "deps/oniguruma/src/onig_init.c"
+                     "deps/oniguruma/src/unicode.c"
+                     "deps/oniguruma/src/ascii.c"
+                     "deps/oniguruma/src/utf8.c"
+                     "deps/oniguruma/src/unicode_unfold_key.c"
+                     "deps/oniguruma/src/unicode_fold1_key.c"
+                     "deps/oniguruma/src/unicode_fold2_key.c"
+                     "deps/oniguruma/src/unicode_fold3_key.c"]
+         :c-includes ["deps/oniguruma/config" "deps/oniguruma/src"]
+         :c-flags ["-DHAVE_CONFIG_H"]}]}

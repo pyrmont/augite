@@ -2,8 +2,11 @@
 
 ; Helpers
 
-; The tests run the program with the Wattle interpreter that is running them.
-(def- program [(dyn :executable) "lib/cli.wattle"])
+; The tests run the program with the Wattle interpreter that is running them,
+; with the module path of the tests, so that the program finds onig.
+(def- program [(dyn :executable)
+               "-e" (string/format "(setdyn *modpath* %q)" (dyn *modpath*))
+               "lib/cli.wattle"])
 
 (defn- shell-capture [args]
   (def x (os/spawn (array/concat! ![] program args) :p {:out :pipe :err :pipe}))

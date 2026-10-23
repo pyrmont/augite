@@ -2,100 +2,42 @@
 
 (import ../lib/highlight)
 (import ../lib/hl/classes)
-(import ../lib/hl/compile)
 (import ../lib/hl/engine)
-(import ../lib/hl/regex)
 
-(defn- first-match
-  """
-  Returns the [start end] of the whole match and of each group of the first
-  match of the regex source in text, with nil for a group that did not take
-  part.
-  """
-  [source text]
-  (def c (compile/compile source))
-  (when-let [[_ groups] (compile/scan (compile/scanner [c]) text 0 -1 -1)]
-    (vec (map #(get groups $) (range (inc (c :groups)))))))
+(import onig)
 
-; Regex parser
+; Scanners
 
-(deftest parse
-  (is (== {:node [:seq [[:lit "a"]
-                        [:rep 0 nil :lazy [:group 1 [:alt [[:lit "b"] [:lit "c"]]]]]
-                        [:lit "d"]]]
-           :groups 1
-           :names {}}
-          (regex/parse "a(b|c)*?d")))
-  (is (== {:node [:seq [[:group 1 [:rep 0 1 :greedy [:lit "`"]]] [:backref "q"]]]
-           :groups 1
-           :names {"q" 1}}
-          (regex/parse "(?x) (?<q>`?) # comment\n \\k<q>")))
-  (is (== [:set [[0x2190 0x23FF]]] ((regex/parse "[\\x{2190}-\\x{23FF}]") :node)))
-  (is (== [:lit "{}"] ((regex/parse "{}") :node))))
+(defn- scan [patterns text pos]
+  (onig/scan (onig/scanner patterns) text pos))
 
-(deftest parse-errors
-  (is (thrown? (regex/parse "(?m)a")))
-  (is (thrown? (regex/parse "a\\K")))
-  (is (thrown? (regex/parse "(a"))))
+(deftest scanner
+  ; The match that starts earliest wins, and the earlier regex a tie.
+  (is (== [1 [[1 2]]] (scan ["c" "b" "bc"] "abc" 0)))
+  (is (== [1 [[1 2]]] (scan ["x" "b|bc" "bc"] "abc" 0)))
+  (is (nil? (scan ["x"] "abc" 0)))
+  ; A group that does not take part is nil. Positions are in bytes.
+  (is (== [0 [[1 4] nil [3 4] nil]] (scan ["é(x)?(b)|é(b)" "z"] "aébcb" 0)))
+  ; Named groups are numbered with the others.
+  (is (== [0 [[1 4] [2 3] [3 4]]] (scan ["a(?<n>b)(\\k<n>)"] "xabb" 0)))
+  ; \\G matches where the search starts.
+  (is (nil? (scan ["\\Gb"] "abb" 0)))
+  (is (== [0 [[1 2]]] (scan ["\\Gb"] "abb" 1))))
 
-; Regex compiler
+(deftest scanner-reuses-results
+  ; A later search of the same text gives the same results as a new scanner.
+  (def s (onig/scanner ["(?<=b)c+" "a(x)?(b)" "\\Gc" "\\p{Greek}+"]))
+  (def text "abccc λλ")
+  (each pos [0 2 3 5 6 9]
+    (is (== (scan ["(?<=b)c+" "a(x)?(b)" "\\Gc" "\\p{Greek}+"] text pos)
+            (onig/scan s text pos))
+        (string pos))))
 
-(deftest backtracking
-  (is (== [[2 7] [5 6]] (first-match "a(b|c)*?d" "xxabcbd")))
-  (is (== [[0 4] [1 3]] (first-match "a(b|bc)d" "abcd")))
-  (is (== [[0 4] [0 1] [1 4] [4 4]] (first-match "(a|ab)(c|bcd)(d*)" "abcd")))
-  (is (== [[0 5] [4 5]] (first-match ".*(x)" "abxcxd")))
-  (is (== [[0 3] [2 3]] (first-match ".*?(x)" "abxcxd")))
-  (is (== [[0 3]] (first-match "x{2,3}" "xxxx")))
-  (is (== [[0 2]] (first-match "x{2,3}?" "xxxx"))))
-
-(deftest atomic
-  (is (nil? (first-match "(?>a*)a" "aaa")))
-  (is (nil? (first-match "a*+a" "aaa"))))
-
-(deftest anchors
-  (is (== [[6 10]] (first-match "\\bfunc\\b" "funcs func")))
-  (is (== [[0 5] [2 3] [3 5]] (first-match "^\\s*(#)(if)" "  #if X")))
-  (is (== [[3 3]] (first-match "$" "abc\n")))
-  (def c (compile/compile "\\Gx"))
-  (def s (compile/scanner [c]))
-  (is (nil? (compile/scan s "axx" 1 -1 -1)))
-  (is (== [0 {0 [1 2]}] (compile/scan s "axx" 1 1 -1))))
-
-(deftest lookaround
-  (is (== [[4 7]] (first-match "(?<=\\.)foo" "foo.foo")))
-  (is (== [[5 8]] (first-match "(?<!\\.)foo" ".foo foo")))
-  (is (== [[0 1] [0 3]] (first-match "(?=(foo))f" "foo")))
-  (is (== [[2 4] [3 4]] (first-match "(?<=[`\\p{L}_])\\s*(\\[)" "é [")))
-  (is (== [[10 11]] (first-match "(?<![a-zé]\\.)x" "é.x a.x .x"))))
-
-(deftest backreferences
-  (is (== [[0 9] [0 2] [3 6]] (first-match "(\\#+)/(.*?)/\\1" "##/x/#/##")))
-  (is (== [[4 10] [4 5] [9 10]] (first-match "(?<q>`?)[\\p{L}_][\\p{L}_]*(\\k<q>)" "  = `déf`"))))
-
-(deftest calls
-  (is (== [[0 2] [1 2]] (first-match "(\\()(?:x|\\g<1>)" "((x")))
-  (is (== [[0 8] [0 8]] (first-match "(\\{(?:\\g<-1>|(?!{).*?)\\})" "{{a} b}}X"))))
-
-(deftest ignore-case
-  (is (== [[0 8]] (first-match "<(?i:script)>" "<ScRiPt>x")))
-  (is (== [[2 5]] (first-match "(?i)[a-c]+" "xxAbC")))
-  (is (nil? (first-match "(?i)[^a]" "A"))))
-
-(deftest variable-lookbehind
-  (is (nil? (first-match "(?<!(?:^|\\s)await\\s+)using" "await   using")))
-  (is (nil? (first-match "(?<!(?:^|\\s)await\\s+)using" "x await using")))
-  (is (== [[8 13]] (first-match "(?<!(?:^|\\s)await\\s+)using" "xawait  using")))
-  (is (== [[1 2] [1 2]] (first-match "(a)(?<=\\1)" "baa")))
-  (is (thrown? (compile/compile "(a)(?<=b\\1)"))))
-
-(deftest empty-iterations
-  (is (== [[0 3]] (first-match "(?:a*)*b" "aab")))
-  (is (== [[0 0]] (first-match "(?:x?)*" "yy"))))
-
-(deftest unicode
-  (is (== [[1 7]] (first-match "[\\x{2190}-\\x{23FF}]+" "a→↓b")))
-  (is (== [[0 2]] (first-match "." "é"))))
+(deftest scanner-errors
+  ; A regex that does not compile never matches.
+  (is (== "end pattern with unmatched parenthesis" (onig/error "(a")))
+  (is (nil? (onig/error "a(?<n>b)\\k<n>")))
+  (is (== [1 [[0 1]]] (scan ["(a" "a"] "a" 0))))
 
 ; Classes
 

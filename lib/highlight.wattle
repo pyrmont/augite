@@ -21,7 +21,7 @@
   (def lib (string/slice here 0 (last (string/find-all "/" here))))
   (def out !"")
   (each path ["highlight.wattle" "html.wattle" "hl/classes.wattle"
-              "hl/compile.wattle" "hl/engine.wattle" "hl/regex.wattle"]
+              "hl/engine.wattle" "hl/onig.zig"]
     (buffer/push! out (slurp (string lib "/" path))))
   (string (crypto/hash :sha256 out)))
 

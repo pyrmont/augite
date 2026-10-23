@@ -4,7 +4,7 @@
 ; stack of the begin/end rules that are open, each an element of a linked
 ; list of maps.
 
-(import ./compile)
+(import onig)
 
 ; Rules
 
@@ -136,20 +136,39 @@
 
 ; Regexes
 
-(def- never {:grammar {:main ['not 0]} :groups 0})
-
-(defn- compiled
-  "Returns the compiled regex for source, or one that never matches if it cannot be compiled."
+(defn- check
+  "Warns, once for each source, if the regex source cannot be compiled. Such a regex never matches."
   [g source]
-  (or (get (g :regexes) source)
-      (do
-        (def c (try
-                 (compile/compile source)
-                 ([e]
-                   (warn g (string/format "%s: %s" e (string/slice source 0 (min 60 (length source)))))
-                   never)))
-        (put! (g :regexes) source c)
-        c)))
+  (unless (get (g :regexes) source)
+    (put! (g :regexes) source true)
+    (when-let [e (onig/error source)]
+      (warn g (string/format "%s: %s" e (string/slice source 0 (min 60 (length source))))))))
+
+(defn- resolve-anchors
+  """
+  Returns source with \A replaced by a character that cannot match unless a?,
+  and \G unless g?, as vscode-textmate does.
+  """
+  [source a? g?]
+  (if (and a? g?)
+    source
+    (do
+      (def out !"")
+      (def len (length source))
+      (var i 0)
+      (while (< i len)
+        (def c (get source i))
+        (if (and (= c (chr "\\")) (< (inc i) len))
+          (do
+            (def n (get source (inc i)))
+            (if (or (and (= n (chr "A")) (not a?)) (and (= n (chr "G")) (not g?)))
+              (buffer/push! out "\uFFFF")
+              (buffer/push-byte! out c n))
+            (+= i 2))
+          (do
+            (buffer/push-byte! out c)
+            (++ i))))
+      (string out))))
 
 (defn- collect-patterns
   "Pushes [source id] for each regex that the rule with id contributes to a scanner."
@@ -168,11 +187,12 @@
 (defn- scanner
   """
   Returns the scanner for the patterns of the rule with id, with end, the
-  source of its end regex, if it has one: a map of :peg, :ids, the rule id of
-  each regex (end-id for the end), and :groups, the number of groups of each.
+  source of its end regex, if it has one: a map of :scanner and :ids, the rule
+  id of each regex (end-id for the end). \A can match only if a?, and \G only
+  if g?.
   """
-  [g id end]
-  (def key [id end])
+  [g id end a? g?]
+  (def key [id end a? g?])
   (or (get (g :scanners) key)
       (do
         (def rule (get (g :rules) id))
@@ -184,10 +204,10 @@
           (if (rule :end-last?)
             (array/push! items [end end-id])
             (array/insert! items 0 [end end-id])))
-        (def regexes (map #(compiled g (first $)) items))
-        (def s {:peg (compile/scanner regexes)
-                :ids (vec (map #(get $ 1) items))
-                :groups (vec (map #($ :groups) regexes))})
+        (each [source] items
+          (check g source))
+        (def s {:scanner (onig/scanner (map #(resolve-anchors (first $) a? g?) items))
+                :ids (vec (map #(get $ 1) items))})
         (put! (g :scanners) key s)
         s)))
 
@@ -284,9 +304,9 @@
 
 (var- tokenize-string nil)
 
-(defn- handle-captures [g text first-line? stack lt captures caps groups]
+(defn- handle-captures [g text first-line? stack lt captures caps]
   (when captures
-    (def n (min (length captures) (inc groups)))
+    (def n (min (length captures) (length caps)))
     (def local ![])
     (def max-end (get (get caps 0) 1))
     (var i 0)
@@ -331,8 +351,9 @@
       (when (and deadline (> (os/clock :monotonic) deadline))
         (error "time limit"))
       (def rule (get (g :rules) (stack :rule)))
-      (def s (scanner g (stack :rule) (when (= :begin-end (rule :kind)) (or (stack :end) (rule :end)))))
-      (def r (compile/scan (s :peg) text pos (if (= pos anchor) pos -1) (if first-line? 0 -1)))
+      (def s (scanner g (stack :rule) (when (= :begin-end (rule :kind)) (or (stack :end) (rule :end)))
+                      first-line? (= pos anchor)))
+      (def r (onig/scan (s :scanner) text pos))
       (if (nil? r)
         (do
           (produce lt (stack :content-scopes) len)
@@ -340,7 +361,6 @@
         (do
           (def [index caps] r)
           (def id (get (s :ids) index))
-          (def groups (get (s :groups) index))
           (def [start end] (get caps 0))
           (def advanced? (> end pos))
           (if (= id end-id)
@@ -348,7 +368,7 @@
               (def popped-rule rule)
               (produce lt (stack :content-scopes) start)
               (set stack (assoc stack :content-scopes (stack :name-scopes)))
-              (handle-captures g text first-line? stack lt (popped-rule :end-captures) caps groups)
+              (handle-captures g text first-line? stack lt (popped-rule :end-captures) caps)
               (produce lt (stack :content-scopes) end)
               (def popped stack)
               (set stack (stack :parent))
@@ -367,7 +387,7 @@
               (set stack (push stack id pos anchor (= end len) nil name-scopes name-scopes))
               (if (= :begin-end (matched :kind))
                 (do
-                  (handle-captures g text first-line? stack lt (matched :begin-captures) caps groups)
+                  (handle-captures g text first-line? stack lt (matched :begin-captures) caps)
                   (produce lt (stack :content-scopes) end)
                   (set anchor end)
                   (set stack (assoc stack :content-scopes
@@ -380,7 +400,7 @@
                     (produce lt (stack :content-scopes) len)
                     (set stop true)))
                 (do
-                  (handle-captures g text first-line? stack lt (matched :captures) caps groups)
+                  (handle-captures g text first-line? stack lt (matched :captures) caps)
                   (produce lt (stack :content-scopes) end)
                   (set stack (stack :parent))
                   (unless advanced?
