@@ -135,6 +135,10 @@ Use `index` to create an index page that lists one or more repositories:
 augite index -o public .
 ```
 
+To link each repository's pages back to the index, pass its location to
+`augite repo` with `--parent`. For an index in the directory above the
+repository's site, that is `--parent ..`.
+
 See [`augite-index(1)`][index-man] for all options (`man augite-index`).
 
 [index-man]: man/man1/augite-index.1.predoc

@@ -72,7 +72,16 @@
   (is (has? log "<a href=\"file/README.md.html\">README</a>"))
   (is (has? log "git clone <a href=\"https://example.org/fixture.git\">"))
   (is (has? log (string "<script src=\"" assets/script-href "\" defer></script>")))
-  (is (not (has? log "class=\"pager\""))))
+  (is (not (has? log "class=\"pager\"")))
+  (is (not (has? log "All repositories")))
+  (is (has? log "<header>\n<img src=\"logo.png\"")))
+
+(deftest parent-links
+  (fresh-build :parent "..")
+  (is (has? (page "log.html") "<p class=\"up\"><a href=\"../\">← All repositories</a></p>\n<header>\n<a href=\"../\"><img src=\"logo.png\""))
+  (is (has? (page "file/README.md.html") "<a href=\"../../\">← All repositories</a>"))
+  (fresh-build :parent "https://example.org/")
+  (is (has? (page "file/README.md.html") "<a href=\"https://example.org/\">← All repositories</a>")))
 
 (deftest log-paging
   (fresh-build :per-page 2)

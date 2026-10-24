@@ -102,13 +102,19 @@
             " Atom Feed (tags)\" href=\"" root "tags.xml\">\n"
             "<link rel=\"stylesheet\" href=\"" root assets/style-href "\">\n"
             "<script src=\"" root assets/script-href "\" defer></script>\n"))
+  (def logo (string "<img src=\"" root "logo.png\" alt=\"\" width=\"32\" height=\"32\">"))
   (def out !"")
-  (buffer/push!
-    out
-    "<header>\n"
-    "<a href=\"" root "../\"><img src=\"" root "logo.png\" alt=\"\" width=\"32\" height=\"32\"></a>\n"
-    "<div>\n"
-    "<h1>" name "</h1>\n")
+  (if-let [parent (ctx :parent)]
+    (let [href (escape (if (or (string/has-prefix? "/" parent) (string/find "://" parent))
+                         parent
+                         (string root parent)))]
+      (buffer/push!
+        out
+        "<p class=\"up\"><a href=\"" href "\">← All repositories</a></p>\n"
+        "<header>\n"
+        "<a href=\"" href "\">" logo "</a>\n"))
+    (buffer/push! out "<header>\n" logo "\n"))
+  (buffer/push! out "<div>\n" "<h1>" name "</h1>\n")
   (when desc
     (buffer/push! out "<p class=\"desc\">" (escape desc) "</p>\n"))
   (when-let [url (info :url)]

@@ -146,9 +146,11 @@
   Writes the site for the Git repository at repo-dir into the directory
   output. grammars, if not nil, is the directory of the TextMate grammars
   with which to highlight file pages, and cache, if not nil, the directory in
-  which to keep highlighted files between runs.
+  which to keep highlighted files between runs. parent, if not nil, is the
+  path or URL of the list of repositories to which each page links. A
+  relative path is relative to output.
   """
-  [repo-dir & {:keys [output grammars cache per-page base-url]
+  [repo-dir & {:keys [output grammars cache per-page base-url parent]
                :or {output "." per-page 50}}]
   (assert-dir repo-dir)
   (assertf (pos? per-page) "invalid number of commits per page: %d" per-page)
@@ -161,6 +163,7 @@
             :nav (nav paths)
             :paths paths
             :base-url (with-slash base-url)
+            :parent (let [p (with-slash parent)] (if (empty? p) nil p))
             :generated (os/time)})
   (def out output)
   (fs/mkdirp out)

@@ -176,6 +176,14 @@ header nav {
   grid-column: 1 / -1;
 }
 
+.up {
+  margin: 0 0 1rem;
+}
+
+.up a {
+  color: var(--muted);
+}
+
 nav a[aria-current="page"] {
   font-weight: bold;
 }
@@ -267,6 +275,14 @@ tbody tr:hover td {
 
   #log tbody tr + tr td {
     border-top: 1px solid var(--rule);
+  }
+
+  #index td, #index th {
+    padding: 0.5em 1em;
+  }
+
+  #index td:first-child, #index th:first-child {
+    padding-left: 0;
   }
 }
 

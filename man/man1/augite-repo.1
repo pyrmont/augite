@@ -38,6 +38,10 @@
 .Fl "-base-url"
 .Ar url
 .Oc
+.Oo
+.Fl "-parent"
+.Ar path
+.Oc
 .Ar repo-dir
 .
 .Sh DESCRIPTION
@@ -127,6 +131,24 @@ feed links are relative.
 This is separate from the clone URL set by
 .Xr augite-setup 1 .
 .It Xo
+.Fl "-parent"
+.Ar path
+.Xc
+Links each page to the list of repositories at
+.Ar path ,
+such as one written by
+.Xr augite-index 1 .
+A relative
+.Ar path
+is relative to the site’s root,
+so
+.Ql "\&.\&."
+is the directory above it.
+An absolute path or a URL is used as is.
+The link appears above the header and on the logo.
+Without this option,
+pages do not link outside the site.
+.It Xo
 .Fl h ,
 .Fl "-help"
 .Xc
@@ -213,7 +235,8 @@ Generate a site with syntax highlighting and a persistent highlighting
 cache:
 .Bd -literal -offset indent
 $ augite repo -o public/engine -g grammars -c cache/engine \e
-    -u https://code\&.example\&.org/engine/ /var/git/engine\&.git
+    -u https://code\&.example\&.org/engine/ --parent \&.\&. \e
+    /var/git/engine\&.git
 .Ed
 .Pp
 To rebuild after pushes,

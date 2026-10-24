@@ -31,6 +31,11 @@
                           :kind  :single
                           :proxy "url"
                           :short "u"}
+           "--parent"    {:help  (string "The path or URL of the list of repositories to "
+                                         "link each page to. A relative path is relative "
+                                         "to the site, as in `..`.")
+                          :kind  :single
+                          :proxy "path"}
            "-------------------------------------------"]})
 
 (def- index-config
@@ -102,7 +107,8 @@
                            :grammars (opts "grammars")
                            :cache (opts "cache")
                            :per-page (opts "per-page")
-                           :base-url (opts "base-url"))
+                           :base-url (opts "base-url")
+                           :parent (opts "parent"))
           "index"
           (site/write-index (params :repo-dirs)
                             :output (opts "output"))

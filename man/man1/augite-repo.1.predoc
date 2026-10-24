@@ -18,7 +18,8 @@ SYNOPSIS
                 [**-g** _dir_ | **--grammars** _dir_]
                 [**-c** _dir_ | **--cache** _dir_]
                 [**-p** _number_ | **--per-page** _number_]
-                [**-u** _url_ | **--base-url** _url_] _repo-dir_
+                [**-u** _url_ | **--base-url** _url_]
+                [**--parent** _path_] _repo-dir_
 
 DESCRIPTION
 ===========
@@ -63,6 +64,13 @@ OPTIONS
   feed links are relative. This is separate from the clone URL set by
   `augite-setup(1)`.
 
+- **--parent** _path_:
+  Links each page to the list of repositories at _path_, such as one written
+  by `augite-index(1)`. A relative _path_ is relative to the site's root, so
+  ``..`` is the directory above it. An absolute path or a URL is used as is.
+  The link appears above the header and on the logo. Without this option,
+  pages do not link outside the site.
+
 - **-h**, **--help**:
   Prints a usage summary and exits.
 
@@ -101,7 +109,8 @@ Generate a site with syntax highlighting and a persistent highlighting cache:
 
 ````
 $ augite repo -o public/engine -g grammars -c cache/engine \
-    -u https://code.example.org/engine/ /var/git/engine.git
+    -u https://code.example.org/engine/ --parent .. \
+    /var/git/engine.git
 ````
 
 To rebuild after pushes, run the command from the repository's
