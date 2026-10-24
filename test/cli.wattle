@@ -1,4 +1,5 @@
 (import ../deps/gum/test :prefix "")
+(import ./support/fixture)
 
 ; Helpers
 
@@ -59,6 +60,23 @@
   (is (== 1 exit-code))
   (is (== nil test-out))
   (is (== "augite: not a directory: test/missing\n" test-err)))
+
+(deftest cli-setup
+  (def repo "tmp/cli/setup.git")
+  (fixture/rmrf "tmp/cli")
+  (fixture/mkdirp repo)
+  (fixture/git repo "2024-01-01T00:00:00Z" "init" "-q" "--bare")
+  (def [exit-code test-out test-err]
+    (shell-capture ["setup" "-d" "A repository" "-o" "Ada" "-u" "https://example.org/x.git" repo]))
+  (is (== 0 exit-code))
+  (is (== nil test-out))
+  (is (== nil test-err))
+  (def [exit-code test-out test-err] (shell-capture ["setup" "--url" "" repo]))
+  (is (== 0 exit-code))
+  (def [exit-code test-out test-err] (shell-capture ["setup" repo]))
+  (is (== 0 exit-code))
+  (is (== "description: A repository\nowner: Ada\nurl: \n" (string test-out)))
+  (is (== nil test-err)))
 
 (deftest cli-unknown-subcommand
   (def [exit-code test-out test-err] (shell-capture ["bogus"]))

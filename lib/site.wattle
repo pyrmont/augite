@@ -177,6 +177,20 @@
   (fs/write (string out "/tags.xml")
             (feeds/tags ctx (tag-commits repo-dir refs commits))))
 
+(defn setup
+  """
+  Writes the values in fields, a map with any of the keys :description,
+  :owner and :url, for the Git repository at repo-dir. An empty value removes
+  the field. If fields is empty, prints the current value of each field.
+  """
+  [repo-dir fields]
+  (assert-dir repo-dir)
+  (if (empty? fields)
+    (let [info (git/info repo-dir)]
+      (each k [:description :owner :url]
+        (printf "%s: %s" k (or (info k) ""))))
+    (git/set-info repo-dir fields)))
+
 (defn write-index
   """
   Writes the list of the Git repositories in repo-dirs into the directory

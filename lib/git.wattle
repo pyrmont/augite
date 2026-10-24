@@ -74,6 +74,23 @@
    :owner (meta "owner")
    :url (meta "url")})
 
+(defn set-info
+  """
+  Writes the values in fields, a map with any of the keys :description,
+  :owner and :url, to the files of those names in the Git directory of
+  repo-dir: repo-dir/.git if it exists, or else repo-dir. An empty value
+  removes the file.
+  """
+  [repo-dir fields]
+  (def dot-git (string repo-dir "/.git"))
+  (def git-dir (if (= :directory (os/stat dot-git :mode)) dot-git repo-dir))
+  (each [k v] fields
+    (def path (string git-dir "/" k))
+    (if (empty? v)
+      (when (os/stat path :mode)
+        (os/rm path))
+      (spit path (string v "\n")))))
+
 (defn head
   "Returns the hash of the commit HEAD points to, or nil if there is none."
   [repo-dir]

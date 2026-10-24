@@ -46,10 +46,33 @@
                        :short   "o"}
            "-------------------------------------------"]})
 
+(def- setup-config
+  {:help (string "Set the description, owner and clone URL of a repository, or "
+                 "show them if no option is given.")
+   :rules [:repo-dir       {:help  "The path of the Git repository."
+                            :proxy "repo-dir"
+                            :req?  true}
+           "--description" {:help  "The one-line description. An empty value removes it."
+                            :kind  :single
+                            :proxy "text"
+                            :short "d"}
+           "--owner"       {:help  "The owner. An empty value removes it."
+                            :kind  :single
+                            :proxy "name"
+                            :short "o"}
+           "--url"         {:help  "The URL to clone from. An empty value removes it."
+                            :kind  :single
+                            :proxy "url"
+                            :short "u"}
+           "-------------------------------------------"]})
+
+(def- setup-fields ["description" "owner" "url"])
+
 (def config
   "The configuration for Argy-Bargy"
   {:subs ["repo"  repo-config
-          "index" index-config]
+          "index" index-config
+          "setup" setup-config]
    :info {:about "Generate a static site for one or more Git repositories."}})
 
 (defn run [args]
@@ -82,7 +105,11 @@
                            :base-url (opts "base-url"))
           "index"
           (site/write-index (params :repo-dirs)
-                            :output (opts "output")))
+                            :output (opts "output"))
+          "setup"
+          (site/setup (params :repo-dir)
+                      (from-pairs (keep #(when-let [v (opts $)] [(keyword $) v])
+                                        setup-fields))))
         ([e]
           (eprint "augite: " e)
           (os/exit 1))))))

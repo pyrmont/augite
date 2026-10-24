@@ -11,6 +11,7 @@
 (def- hashes (fixture/make-repo dir))
 (fixture/git "tmp/git" "2024-01-01T00:00:00Z" "clone" "-q" "--bare" "fixture" "fixture.git")
 (spit (string bare "/description") "The bare fixture\n")
+(fixture/git "tmp/git" "2024-01-01T00:00:00Z" "clone" "-q" "--bare" "fixture" "setup.git")
 (fixture/mkdirp empty-dir)
 (fixture/git empty-dir "2024-01-01T00:00:00Z" "init" "-q")
 
@@ -32,6 +33,17 @@
 (deftest info-bare
   (is (== {:name "fixture" :description "The bare fixture"}
           (git/info bare))))
+
+(deftest set-info-bare
+  (def repo "tmp/git/setup.git")
+  (git/set-info repo {:url "https://example.org/setup.git" :owner "Ada"})
+  (is (== "https://example.org/setup.git\n" (string (slurp (string repo "/url")))))
+  (git/set-info repo {:owner ""})
+  (is (nil? (os/stat (string repo "/owner"))))
+  (is (== {:name "setup"
+           :description "Unnamed repository; edit this file 'description' to name the repository."
+           :url "https://example.org/setup.git"}
+          (git/info repo))))
 
 (deftest head-of-repo
   (is (== (hashes :c5) (git/head dir)))
