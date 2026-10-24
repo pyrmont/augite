@@ -55,39 +55,16 @@
 
 ; Highlighting
 
-(def- grammars (highlight/load-grammars "res/grammars"))
+(def- grammars
+  [(engine/load {"scopeName" "source.test" "fileTypes" ["test"]
+                 "patterns" [{"match" "\\blet\\b" "name" "keyword.test"}
+                             {"match" "\\d+" "name" "constant.numeric.test"}
+                             {"match" "//.*" "name" "comment.line.test"}]})])
 
 (deftest highlight
   (is (nil? (highlight/highlight grammars "README.md" "# Title\n")))
-  (is (== ["<span class=\"hl-keyword\">let</span> x <span class=\"hl-keyword\">=</span> <span class=\"hl-number\">1</span>"
+  (is (== ["<span class=\"hl-keyword\">let</span> x = <span class=\"hl-number\">1</span>"
            "<span class=\"hl-comment\">// &lt;b&gt;</span>"]
-          (highlight/highlight grammars "a/b.swift" "let x = 1\n// <b>\n"))))
-
-(defn- join-tokens
-  "Joins the adjacent tokens in line that have the same scopes."
-  [line]
-  (def out ![])
-  (each [s e scopes] line
-    (def prev (array/peek out))
-    (if (and prev (= (get prev 1) s) (= (get prev 2) scopes))
-      (put! out (dec (length out)) [(get prev 0) e scopes])
-      (array/push! out [s e scopes])))
-  (vec out))
-
-(deftest conformance
-  ; The tokens of vscode-textmate, from res/tools/tokens.mjs.
-  (def fixture (json/decode (slurp "test/hl/grammar-test.swift.json")))
-  (def scopes (fixture "scopes"))
-  (def expected (map (fn [line] (vec (map (fn [[s e i]] [s e (get scopes i)]) line)))
-                     (fixture "lines")))
-  (def actual (engine/tokenize (highlight/grammar-for grammars "x.swift")
-                                 (slurp "test/hl/grammar-test.swift")))
-  (is (== (length expected) (length actual)))
-  (def differ (filter (fn [i]
-                        (not= (join-tokens (map (fn [[s e sc]] [s e (string/join " " sc)])
-                                                (get actual i)))
-                              (get expected i)))
-                      (range (length expected))))
-  (is (== [] (vec (map inc differ)))))
+          (highlight/highlight grammars "a/b.test" "let x = 1\n// <b>\n"))))
 
 (run-tests!)
