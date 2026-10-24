@@ -8,6 +8,12 @@
  :exes [{:type :native
          :name "augite"
          :entry "lib/cli.wattle"}]
+ :docs [{:type :man
+         :files ["man/man1/augite.1"
+                 "man/man1/augite-setup.1"
+                 "man/man1/augite-repo.1"
+                 "man/man1/augite-index.1"]
+         :for ["augite"]}]
  :libs [{:type :native
          :name "onig"
          :root "lib/hl/onig.zig"

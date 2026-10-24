@@ -1,0 +1,78 @@
+---
+Title: AUGITE-SETUP(1)
+Authors: Michael Camilleri <mike@inqk.net>
+Date: 2026-10-24
+Project: Augite
+Version: DEVEL
+---
+
+NAME
+====
+
+**augite-setup** - set or show repository metadata
+
+SYNOPSIS
+========
+
+**augite setup** [**-d** _text_ | **--description** _text_]
+                 [**-o** _name_ | **--owner** _name_] [**-u** _url_ | **--url** _url_] _repo-dir_
+
+DESCRIPTION
+===========
+
+**augite setup** writes the description, owner and clone URL that Augite
+displays for the repository at _repo-dir_. Only the fields specified on the
+command line are changed. An empty value removes the corresponding file.
+
+Without options, the command prints the current description, owner and clone
+URL. Missing values are shown as empty fields.
+
+Metadata is stored in files named ``description``, ``owner`` and ``url``.
+The command writes them in the repository's `.git/` directory when it is a
+directory, or in _repo-dir_ itself for a bare repository. When reading
+metadata, Augite first looks in _repo-dir_ and then in its `.git/` directory,
+as in stagit.
+
+OPTIONS
+=======
+
+- **-d**, **--description** _text_:
+  Sets the one-line description. An empty value removes it.
+
+- **-o**, **--owner** _name_:
+  Sets the owner. An empty value removes it.
+
+- **-u**, **--url** _url_:
+  Sets the URL to clone from. An empty value removes it. This is separate
+  from the site's base URL accepted by `augite-repo(1)`.
+
+- **-h**, **--help**:
+  Prints a usage summary and exits.
+
+EXAMPLES
+========
+
+Set metadata for a bare repository on the server:
+
+````
+$ augite setup -d "The Analytical Engine" --owner "Ada Lovelace" \
+    -u https://example.org/engine.git /var/git/engine.git
+````
+
+Show the current values, then remove the owner:
+
+````
+$ augite setup /var/git/engine.git
+$ augite setup --owner "" /var/git/engine.git
+````
+
+Set the description in the current repository's `.git/` directory:
+
+````
+$ augite setup -d "The Analytical Engine" .
+````
+
+SEE ALSO
+========
+
+`augite(1)`, `augite-index(1)`, `augite-repo(1)`

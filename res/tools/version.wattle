@@ -1,0 +1,36 @@
+; Updates the project and manual versions, then regenerates the man pages.
+
+(import ./manpage)
+
+(defn- replace-version
+  [path text pattern prefix suffix version]
+  (def current (first (peg/match pattern text)))
+  (unless current
+    (error (string path " missing version line")))
+  (string/replace (string prefix current suffix)
+                  (string prefix version suffix)
+                  text))
+
+(defn main
+  [script & args]
+  (unless (and (= 1 (length args))
+               (peg/match `(* (some (set "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")) -1)
+                          (first args)))
+    (error "usage: wattle res/tools/version.wattle <version> (for example, 0.1.0 or DEVEL)"))
+  (def version (first args))
+  (def info-path (string manpage/root "/info.edn"))
+  ; Prepare every replacement before changing any file.
+  (def updates
+    (array [info-path
+            (replace-version info-path (slurp info-path)
+                             `(* (thru ":version \"") '(to "\""))
+                             ":version \"" "\"" version)]))
+  (each source (manpage/sources)
+    (array/push! updates
+                 [source (replace-version source (slurp source)
+                                          `(* (thru "\nVersion: ") '(to "\n"))
+                                          "\nVersion: " "" version)]))
+  (each [path contents] updates
+    (spit path contents)
+    (print "updated " path " to version " version))
+  (manpage/generate-pages (manpage/sources) true))

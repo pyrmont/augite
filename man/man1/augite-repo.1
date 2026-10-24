@@ -1,0 +1,239 @@
+.Dd October 24, 2026
+.Dt AUGITE-REPO 1
+.Os Augite DEVEL
+.
+.Sh NAME
+.Nm augite-repo
+.Nd generate a static site for a Git repository
+.
+.Sh SYNOPSIS
+.Nm "augite repo"
+.Oo
+.Fl o
+.Ar dir No \&|
+.Fl "-output"
+.Ar dir
+.Oc
+.Oo
+.Fl g
+.Ar dir No \&|
+.Fl "-grammars"
+.Ar dir
+.Oc
+.Oo
+.Fl c
+.Ar dir No \&|
+.Fl "-cache"
+.Ar dir
+.Oc
+.Oo
+.Fl p
+.Ar number No \&|
+.Fl "-per-page"
+.Ar number
+.Oc
+.Oo
+.Fl u
+.Ar url No \&|
+.Fl "-base-url"
+.Ar url
+.Oc
+.Ar repo-dir
+.
+.Sh DESCRIPTION
+.Nm "augite repo"
+generates a site for the Git repository at
+.Ar repo-dir .
+The site includes a paginated commit log,
+commit diffs,
+the files at HEAD,
+branches,
+tags and Atom feeds.
+Repository metadata can be set with
+.Xr augite-setup 1 .
+.Pp
+The output directory is created if necessary and defaults to
+the current directory.
+Log pages,
+file pages,
+references,
+feeds,
+the stylesheet and JavaScript are updated on each run.
+Pages for files no longer in the tree and log pages beyond the
+last page are removed.
+.Pp
+Commit pages are written only when they do not already exist.
+To regenerate all commit pages after an upgrade,
+remove the output directory’s
+.Eo
+.Pa commit/
+.Ec
+subdirectory and run the command again.
+.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Xo
+.Fl o ,
+.Fl "-output"
+.Ar dir
+.Xc
+Writes the site to
+.Ar dir
+instead of the current directory.
+.It Xo
+.Fl g ,
+.Fl "-grammars"
+.Ar dir
+.Xc
+Uses TextMate grammars in
+.Ar dir
+to highlight file pages.
+Without this option,
+file pages are plain text.
+To add a language,
+copy its
+.Ql "\&.tmLanguage\&.json"
+file into the directory.
+.It Xo
+.Fl c ,
+.Fl "-cache"
+.Ar dir
+.Xc
+Keeps highlighted files in
+.Ar dir
+between runs to avoid highlighting them again.
+The directory is created if necessary.
+Changes to the grammars invalidate cached highlighting.
+Unused cache files are removed after a run.
+.It Xo
+.Fl p ,
+.Fl "-per-page"
+.Ar number
+.Xc
+Sets the number of commits per log page.
+The default is 50.
+The number must be a positive integer.
+.It Xo
+.Fl u ,
+.Fl "-base-url"
+.Ar url
+.Xc
+Sets the site’s base URL,
+used to make links in the Atom feeds absolute.
+For example,
+.Ql "https://code\&.example\&.org/engine/" .
+Without this option,
+feed links are relative.
+This is separate from the clone URL set by
+.Xr augite-setup 1 .
+.It Xo
+.Fl h ,
+.Fl "-help"
+.Xc
+Prints a usage summary and exits.
+.El
+.
+.Sh FILES
+Paths below are relative to the output directory.
+.Bl -tag -width Ds
+.It Xo
+.Eo
+.Pa ./index.html
+.Ec ,
+.Eo
+.Pa ./log.html
+.Ec ,
+.Eo
+.Pa ./log/<number>.html
+.Ec
+.Xc
+The commit log.
+The first page is written to both
+.Ql "index\&.html"
+and
+.Ql "log\&.html" ;
+subsequent pages are written under
+.Eo
+.Pa log/
+.Ec .
+.It Xo
+.Eo
+.Pa ./commit/<hash>.html
+.Ec
+.Xc
+Individual commit pages.
+.It Xo
+.Eo
+.Pa ./files.html
+.Ec ,
+.Eo
+.Pa ./file/
+.Ec
+.Xc
+The file listing and individual file pages.
+.It Xo
+.Eo
+.Pa ./refs.html
+.Ec
+.Xc
+Branches and tags.
+.It Xo
+.Eo
+.Pa ./atom.xml
+.Ec ,
+.Eo
+.Pa ./tags.xml
+.Ec
+.Xc
+Atom feeds for the latest 100 commits and for tags.
+.It Xo
+.Eo
+.Pa ./style.css
+.Ec ,
+.Eo
+.Pa ./augite.js
+.Ec
+.Xc
+The stylesheet and JavaScript used by the site.
+.It Xo
+.Eo
+.Pa ./logo.png
+.Ec ,
+.Eo
+.Pa ./favicon.png
+.Ec
+.Xc
+Images linked by the pages.
+Augite does not create these files;
+supply them separately.
+.El
+.
+.Sh EXAMPLES
+Generate a site with syntax highlighting and a persistent highlighting
+cache:
+.Bd -literal -offset indent
+$ augite repo -o public/engine -g grammars -c cache/engine \e
+    -u https://code\&.example\&.org/engine/ /var/git/engine\&.git
+.Ed
+.Pp
+To rebuild after pushes,
+run the command from the repository’s
+.Eo
+.Pa hooks/post-receive
+.Ec
+hook.
+The project includes an example in
+.Eo
+.Pa res/hooks/post-receive
+.Ec
+that also rebuilds the repository index.
+.
+.Sh SEE ALSO
+.Xr augite 1 ,
+.Xr augite-index 1 ,
+.Xr augite-setup 1 ,
+.Xr git 1 ,
+.Xr githooks 5
+.
+.Sh AUTHORS
+.An Michael Camilleri Aq Mt mike@inqk.net

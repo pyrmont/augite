@@ -1,0 +1,129 @@
+.Dd October 24, 2026
+.Dt AUGITE-SETUP 1
+.Os Augite DEVEL
+.
+.Sh NAME
+.Nm augite-setup
+.Nd set or show repository metadata
+.
+.Sh SYNOPSIS
+.Nm "augite setup"
+.Oo
+.Fl d
+.Ar text No \&|
+.Fl "-description"
+.Ar text
+.Oc
+.Oo
+.Fl o
+.Ar name No \&|
+.Fl "-owner"
+.Ar name
+.Oc
+.Oo
+.Fl u
+.Ar url No \&|
+.Fl "-url"
+.Ar url
+.Oc
+.Ar repo-dir
+.
+.Sh DESCRIPTION
+.Nm "augite setup"
+writes the description,
+owner and clone URL that Augite displays for the repository
+at
+.Ar repo-dir .
+Only the fields specified on the command line are changed.
+An empty value removes the corresponding file.
+.Pp
+Without options,
+the command prints the current description,
+owner and clone URL.
+Missing values are shown as empty fields.
+.Pp
+Metadata is stored in files named
+.Ql "description" ,
+.Ql "owner"
+and
+.Ql "url" .
+The command writes them in the repository’s
+.Eo
+.Pa .git/
+.Ec
+directory when it is a directory,
+or in
+.Ar repo-dir
+itself for a bare repository.
+When reading metadata,
+Augite first looks in
+.Ar repo-dir
+and then in its
+.Eo
+.Pa .git/
+.Ec
+directory,
+as in stagit.
+.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Xo
+.Fl d ,
+.Fl "-description"
+.Ar text
+.Xc
+Sets the one-line description.
+An empty value removes it.
+.It Xo
+.Fl o ,
+.Fl "-owner"
+.Ar name
+.Xc
+Sets the owner.
+An empty value removes it.
+.It Xo
+.Fl u ,
+.Fl "-url"
+.Ar url
+.Xc
+Sets the URL to clone from.
+An empty value removes it.
+This is separate from the site’s base URL accepted by
+.Xr augite-repo 1 .
+.It Xo
+.Fl h ,
+.Fl "-help"
+.Xc
+Prints a usage summary and exits.
+.El
+.
+.Sh EXAMPLES
+Set metadata for a bare repository on the server:
+.Bd -literal -offset indent
+$ augite setup -d \(dqThe Analytical Engine\(dq --owner \(dqAda Lovelace\(dq \e
+    -u https://example\&.org/engine\&.git /var/git/engine\&.git
+.Ed
+.Pp
+Show the current values,
+then remove the owner:
+.Bd -literal -offset indent
+$ augite setup /var/git/engine\&.git
+$ augite setup --owner \(dq\(dq /var/git/engine\&.git
+.Ed
+.Pp
+Set the description in the current repository’s
+.Eo
+.Pa .git/
+.Ec
+directory:
+.Bd -literal -offset indent
+$ augite setup -d \(dqThe Analytical Engine\(dq \&.
+.Ed
+.
+.Sh SEE ALSO
+.Xr augite 1 ,
+.Xr augite-index 1 ,
+.Xr augite-repo 1
+.
+.Sh AUTHORS
+.An Michael Camilleri Aq Mt mike@inqk.net

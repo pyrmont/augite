@@ -1,0 +1,41 @@
+; Regenerates the man pages with the installed Predoc executable.
+
+(import ../../lib/fs)
+
+(def root
+  (-> (dyn :current-file) os/realpath fs/parent fs/parent fs/parent))
+
+(defn sources
+  "Returns the absolute paths of the Predoc sources under man/."
+  []
+  (def dir (string root "/man"))
+  (map #(string dir "/" $)
+       (filter #(string/has-suffix? ".predoc" $) (fs/files-under dir))))
+
+(defn generate-pages
+  "Regenerates sources that are newer than their output, or all if force?."
+  [pages force?]
+  (each source pages
+    (def output (string/slice source 0 -8))
+    (def modified (os/stat output :modified))
+    (when (or force? (nil? modified) (< modified (os/stat source :modified)))
+      (print "converting " source " to " output)
+      (def status (os/execute ["predoc" "--no-ad" "--output" output source] :p))
+      (unless (zero? status)
+        (error (string "predoc failed for " source " (exit status " status ")"))))))
+
+(defn main
+  [script & args]
+  (def force? (= "-f" (get args 0)))
+  (def names (slice args (if force? 1 0)))
+  (def pages (sources))
+  ; Resolve every selector before writing any output.
+  (each name names
+    (unless (find #(string/has-suffix? (string "/" name) $) pages)
+      (error (string "unknown Predoc source: " name))))
+  (generate-pages (if (empty? names)
+              pages
+              (filter (fn [source]
+                        (find #(string/has-suffix? (string "/" $) source) names))
+                      pages))
+            force?))

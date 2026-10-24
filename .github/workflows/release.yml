@@ -1,0 +1,107 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Which tag do you want to release against?"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            arch: aarch64
+            target: aarch64-macos
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: aarch64
+            target: aarch64-linux-musl
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            target: x86_64-linux-musl
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out Augite
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.version }}
+          path: augite
+      - name: Check out Wattle
+        uses: actions/checkout@v7
+        with:
+          repository: pyrmont/wattle
+          path: wattle
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build Wattle
+        run: zig build
+        working-directory: wattle
+      - name: Build highlighting module for tests
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out build lib
+        working-directory: augite
+      - name: Run Wattle tests
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out test
+        working-directory: augite
+      - name: Build Augite
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out build exe --release fast --target "${{ matrix.target }}"
+        working-directory: augite
+      - name: Check executable
+        run: zig-out/bin/augite --help
+        working-directory: augite
+      - name: Package Augite
+        env:
+          COPYFILE_DISABLE: "1"
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -eu
+          package="augite-$RELEASE_VERSION"
+          mkdir -p "$package/man/man1" "$package/res/hooks" \
+            "$package/licenses"
+          cp zig-out/bin/augite LICENSE README.md "$package/"
+          cp deps/oniguruma/LICENSE "$package/licenses/oniguruma.txt"
+          cp deps/gum/LICENSE "$package/licenses/gum.txt"
+          cp ../wattle/LICENSE "$package/licenses/wattle.txt"
+          cp man/man1/*.1 "$package/man/man1/"
+          cp res/hooks/post-receive "$package/res/hooks/"
+          tar -czf "${package}-${RELEASE_PLATFORM}-${RELEASE_ARCH}.tar.gz" "$package"
+        working-directory: augite
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.platform }}-${{ matrix.arch }}
+          path: augite/augite-${{ inputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+          merge-multiple: true
+      - name: Draft the release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          generate_release_notes: true
+          files: ./artifacts/*.tar.gz
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          tag_name: ${{ inputs.version }}

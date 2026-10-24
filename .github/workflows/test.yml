@@ -1,0 +1,59 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out Augite
+        uses: actions/checkout@v7
+        with:
+          path: augite
+      - name: Check out Wattle
+        uses: actions/checkout@v7
+        with:
+          repository: pyrmont/wattle
+          path: wattle
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build Wattle
+        run: zig build
+        working-directory: wattle
+      - name: Build highlighting module for tests
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out build lib
+        working-directory: augite
+      - name: Build Augite
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out build exe
+        working-directory: augite
+      - name: Run Wattle tests
+        run: ../wattle/zig-out/bin/wattle -p ../wattle/zig-out test
+        working-directory: augite
+      - name: Check CLI
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/augite-site
+        run: |
+          set -eu
+          zig-out/bin/augite --help
+          zig-out/bin/augite setup --help
+          zig-out/bin/augite repo --help
+          zig-out/bin/augite index --help
+          zig-out/bin/augite setup -d "Augite CI" .
+          zig-out/bin/augite repo -o "$OUTPUT_DIR/augite" .
+          zig-out/bin/augite index -o "$OUTPUT_DIR" .
+          test -s "$OUTPUT_DIR/augite/index.html"
+          test -s "$OUTPUT_DIR/augite/files.html"
+          test -s "$OUTPUT_DIR/index.html"
+        working-directory: augite

@@ -1,0 +1,114 @@
+---
+Title: AUGITE-REPO(1)
+Authors: Michael Camilleri <mike@inqk.net>
+Date: 2026-10-24
+Project: Augite
+Version: DEVEL
+---
+
+NAME
+====
+
+**augite-repo** - generate a static site for a Git repository
+
+SYNOPSIS
+========
+
+**augite repo** [**-o** _dir_ | **--output** _dir_]
+                [**-g** _dir_ | **--grammars** _dir_]
+                [**-c** _dir_ | **--cache** _dir_]
+                [**-p** _number_ | **--per-page** _number_]
+                [**-u** _url_ | **--base-url** _url_] _repo-dir_
+
+DESCRIPTION
+===========
+
+**augite repo** generates a site for the Git repository at _repo-dir_.
+The site includes a paginated commit log, commit diffs, the files at HEAD,
+branches, tags and Atom feeds. Repository metadata can be set with
+`augite-setup(1)`.
+
+The output directory is created if necessary and defaults to the current
+directory. Log pages, file pages, references, feeds, the stylesheet and
+JavaScript are updated on each run. Pages for files no longer in the tree
+and log pages beyond the last page are removed.
+
+Commit pages are written only when they do not already exist. To regenerate
+all commit pages after an upgrade, remove the output directory's `commit/`
+subdirectory and run the command again.
+
+OPTIONS
+=======
+
+- **-o**, **--output** _dir_:
+  Writes the site to _dir_ instead of the current directory.
+
+- **-g**, **--grammars** _dir_:
+  Uses TextMate grammars in _dir_ to highlight file pages. Without this
+  option, file pages are plain text. To add a language, copy its
+  ``.tmLanguage.json`` file into the directory.
+
+- **-c**, **--cache** _dir_:
+  Keeps highlighted files in _dir_ between runs to avoid highlighting them
+  again. The directory is created if necessary. Changes to the grammars
+  invalidate cached highlighting. Unused cache files are removed after a run.
+
+- **-p**, **--per-page** _number_:
+  Sets the number of commits per log page. The default is 50. The number
+  must be a positive integer.
+
+- **-u**, **--base-url** _url_:
+  Sets the site's base URL, used to make links in the Atom feeds absolute.
+  For example, ``https://code.example.org/engine/``. Without this option,
+  feed links are relative. This is separate from the clone URL set by
+  `augite-setup(1)`.
+
+- **-h**, **--help**:
+  Prints a usage summary and exits.
+
+FILES
+=====
+
+Paths below are relative to the output directory.
+
+- `./index.html`, `./log.html`, `./log/<number>.html`:
+  The commit log. The first page is written to both ``index.html`` and
+  ``log.html``; subsequent pages are written under `log/`.
+
+- `./commit/<hash>.html`:
+  Individual commit pages.
+
+- `./files.html`, `./file/`:
+  The file listing and individual file pages.
+
+- `./refs.html`:
+  Branches and tags.
+
+- `./atom.xml`, `./tags.xml`:
+  Atom feeds for the latest 100 commits and for tags.
+
+- `./style.css`, `./augite.js`:
+  The stylesheet and JavaScript used by the site.
+
+- `./logo.png`, `./favicon.png`:
+  Images linked by the pages. Augite does not create these files; supply
+  them separately.
+
+EXAMPLES
+========
+
+Generate a site with syntax highlighting and a persistent highlighting cache:
+
+````
+$ augite repo -o public/engine -g grammars -c cache/engine \
+    -u https://code.example.org/engine/ /var/git/engine.git
+````
+
+To rebuild after pushes, run the command from the repository's
+`hooks/post-receive` hook. The project includes an example in
+`res/hooks/post-receive` that also rebuilds the repository index.
+
+SEE ALSO
+========
+
+`augite(1)`, `augite-index(1)`, `augite-setup(1)`, `git(1)`, `githooks(5)`

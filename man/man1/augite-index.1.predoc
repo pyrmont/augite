@@ -1,0 +1,62 @@
+---
+Title: AUGITE-INDEX(1)
+Authors: Michael Camilleri <mike@inqk.net>
+Date: 2026-10-24
+Project: Augite
+Version: DEVEL
+---
+
+NAME
+====
+
+**augite-index** - generate an index of Git repositories
+
+SYNOPSIS
+========
+
+**augite index** [**-o** _dir_ | **--output** _dir_] _repo-dir_ ...
+
+DESCRIPTION
+===========
+
+**augite index** writes an index page listing the repositories given as
+arguments. Each entry shows the repository's name, description and latest
+commit date. Descriptions can be set with `augite-setup(1)`.
+
+The command writes ``index.html`` and ``style.css`` to the output directory,
+creating the directory if necessary. Existing files at those paths are
+replaced. The default output directory is the current directory.
+
+Each entry links to a subdirectory named after the repository, with any
+trailing ``.git`` removed. For example, a repository at
+`/var/git/engine.git` links to `engine/` beside the index page. Generate
+each repository's pages separately with `augite-repo(1)` in the matching
+subdirectory.
+
+OPTIONS
+=======
+
+- **-o**, **--output** _dir_:
+  Writes the index and stylesheet to _dir_ instead of the current directory.
+
+- **-h**, **--help**:
+  Prints a usage summary and exits.
+
+EXAMPLES
+========
+
+Generate two repository sites and an index linking to both:
+
+````
+$ augite repo -o public/engine /var/git/engine.git
+$ augite repo -o public/notes /var/git/notes.git
+$ augite index -o public /var/git/engine.git /var/git/notes.git
+````
+
+The index is written to `public/index.html`. Each repository's
+`logo.png` is used beside its entry; Augite does not create these images.
+
+SEE ALSO
+========
+
+`augite(1)`, `augite-repo(1)`, `augite-setup(1)`

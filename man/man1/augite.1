@@ -1,0 +1,92 @@
+.Dd October 24, 2026
+.Dt AUGITE 1
+.Os Augite DEVEL
+.
+.Sh NAME
+.Nm augite
+.Nd generate static sites for Git repositories
+.
+.Sh SYNOPSIS
+.Nm
+.Ar subcommand
+.Ar arguments
+.Nm
+.Oo
+.Fl h No \&|
+.Fl "-help"
+.Oc
+.
+.Sh DESCRIPTION
+.Nm
+generates static HTML pages for Git repositories,
+including commit logs,
+diffs,
+file contents,
+references and Atom feeds.
+File pages can be highlighted with TextMate grammars.
+The generated files can be served by a web server without running
+Augite on each request.
+.Pp
+The
+.Ic git
+executable must be available on
+.Ev PATH .
+Both bare repositories and repositories with working trees can
+be used.
+Pages describe committed content,
+rather than uncommitted changes in the working tree.
+.
+.Sh SUBCOMMANDS
+.Bl -tag -width Ds
+.It Xo
+.Xr augite-setup 1
+.Xc
+Sets or shows a repository’s description,
+owner and clone URL.
+.It Xo
+.Xr augite-repo 1
+.Xc
+Generates one repository’s site.
+.It Xo
+.Xr augite-index 1
+.Xc
+Generates an index page listing repositories.
+.El
+.
+.Sh OPTIONS
+.Bl -tag -width Ds -compact
+.It Xo
+.Fl h ,
+.Fl "-help"
+.Xc
+Prints a usage summary and exits.
+Each subcommand also accepts these options to show its own usage.
+.El
+.
+.Sh EXIT STATUS
+.Nm
+exits with status 0 on success,
+including when help is requested,
+and status 1 on an error.
+.
+.Sh EXAMPLES
+Set repository metadata,
+generate its pages and create an index:
+.Bd -literal -offset indent
+$ augite setup -d \(dqThe Analytical Engine\(dq --owner \(dqAda Lovelace\(dq /var/git/engine\&.git
+$ augite repo -o public/engine /var/git/engine\&.git
+$ augite index -o public /var/git/engine\&.git
+.Ed
+.
+.Sh SEE ALSO
+.Xr augite-index 1 ,
+.Xr augite-repo 1 ,
+.Xr augite-setup 1 ,
+.Xr git 1
+.
+.Sh AUTHORS
+.An Michael Camilleri Aq Mt mike@inqk.net
+.
+.Sh BUGS
+Report issues at
+.Lk https://github.com/pyrmont/augite/issues .

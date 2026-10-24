@@ -1,0 +1,95 @@
+.Dd October 24, 2026
+.Dt AUGITE-INDEX 1
+.Os Augite DEVEL
+.
+.Sh NAME
+.Nm augite-index
+.Nd generate an index of Git repositories
+.
+.Sh SYNOPSIS
+.Nm "augite index"
+.Oo
+.Fl o
+.Ar dir No \&|
+.Fl "-output"
+.Ar dir
+.Oc
+.Ar repo-dir
+.No ...
+.
+.Sh DESCRIPTION
+.Nm "augite index"
+writes an index page listing the repositories given as arguments.
+Each entry shows the repository’s name,
+description and latest commit date.
+Descriptions can be set with
+.Xr augite-setup 1 .
+.Pp
+The command writes
+.Ql "index\&.html"
+and
+.Ql "style\&.css"
+to the output directory,
+creating the directory if necessary.
+Existing files at those paths are replaced.
+The default output directory is the current directory.
+.Pp
+Each entry links to a subdirectory named after the repository,
+with any trailing
+.Ql "\&.git"
+removed.
+For example,
+a repository at
+.Eo
+.Pa /var/git/engine.git
+.Ec
+links to
+.Eo
+.Pa engine/
+.Ec
+beside the index page.
+Generate each repository’s pages separately with
+.Xr augite-repo 1
+in the matching subdirectory.
+.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Xo
+.Fl o ,
+.Fl "-output"
+.Ar dir
+.Xc
+Writes the index and stylesheet to
+.Ar dir
+instead of the current directory.
+.It Xo
+.Fl h ,
+.Fl "-help"
+.Xc
+Prints a usage summary and exits.
+.El
+.
+.Sh EXAMPLES
+Generate two repository sites and an index linking to both:
+.Bd -literal -offset indent
+$ augite repo -o public/engine /var/git/engine\&.git
+$ augite repo -o public/notes /var/git/notes\&.git
+$ augite index -o public /var/git/engine\&.git /var/git/notes\&.git
+.Ed
+.Pp
+The index is written to
+.Eo
+.Pa public/index.html
+.Ec .
+Each repository’s
+.Ql "logo\&.png"
+is used beside its entry;
+Augite does not create these images.
+.
+.Sh SEE ALSO
+.Xr augite 1 ,
+.Xr augite-repo 1 ,
+.Xr augite-setup 1
+.
+.Sh AUTHORS
+.An Michael Camilleri Aq Mt mike@inqk.net

@@ -11,6 +11,8 @@
 
 set -e
 
+# The full path, because sshd may give the hook a PATH without /usr/local/bin.
+augite="/usr/local/bin/augite"
 repo=$(pwd)
 name=$(basename "$repo" .git)
 public="/var/www/code.inqk.net/public"
@@ -34,14 +36,14 @@ unset GIT_DIR
 
 rebuild() {
   echo "$(date -u '+%Y-%m-%d %H:%M:%S') rebuilding $name"
-  augite repo -o "$out" -g "$grammars" -c "$cache" -u "https://code.inqk.net/$name/" "$repo"
+  "$augite" repo -o "$out" -g "$grammars" -c "$cache" -u "https://code.inqk.net/$name/" "$repo"
 
   # augite links to logo.png and favicon.png but does not write them.
   ln -sf "../assets/images/$name-logo.png" "$out/logo.png"
   ln -sf "../assets/images/$name-favicon.png" "$out/favicon.png"
 
   # The list of repositories, which links to each repository's logo.png.
-  augite index -o "$public" /var/git/*.git
+  "$augite" index -o "$public" /var/git/*.git
   echo "$(date -u '+%Y-%m-%d %H:%M:%S') done"
 }
 

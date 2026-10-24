@@ -1,0 +1,76 @@
+---
+Title: AUGITE(1)
+Authors: Michael Camilleri <mike@inqk.net>
+Date: 2026-10-24
+Project: Augite
+Version: DEVEL
+---
+
+NAME
+====
+
+**augite** - generate static sites for Git repositories
+
+SYNOPSIS
+========
+
+**augite** _subcommand_ _arguments_
+**augite** [**-h** | **--help**]
+
+DESCRIPTION
+===========
+
+**augite** generates static HTML pages for Git repositories, including commit
+logs, diffs, file contents, references and Atom feeds. File pages can be
+highlighted with TextMate grammars. The generated files can be served by a
+web server without running Augite on each request.
+
+The **git** executable must be available on `PATH`. Both bare repositories
+and repositories with working trees can be used. Pages describe committed
+content, rather than uncommitted changes in the working tree.
+
+SUBCOMMANDS
+===========
+
+- `augite-setup(1)`:
+  Sets or shows a repository's description, owner and clone URL.
+
+- `augite-repo(1)`:
+  Generates one repository's site.
+
+- `augite-index(1)`:
+  Generates an index page listing repositories.
+
+OPTIONS
+=======
+
+- **-h**, **--help**:
+  Prints a usage summary and exits. Each subcommand also accepts these
+  options to show its own usage.
+
+EXIT STATUS
+===========
+
+**augite** exits with status 0 on success, including when help is requested,
+and status 1 on an error.
+
+EXAMPLES
+========
+
+Set repository metadata, generate its pages and create an index:
+
+````
+$ augite setup -d "The Analytical Engine" --owner "Ada Lovelace" /var/git/engine.git
+$ augite repo -o public/engine /var/git/engine.git
+$ augite index -o public /var/git/engine.git
+````
+
+SEE ALSO
+========
+
+`augite-index(1)`, `augite-repo(1)`, `augite-setup(1)`, `git(1)`
+
+BUGS
+====
+
+Report issues at <https://github.com/pyrmont/augite/issues>.
