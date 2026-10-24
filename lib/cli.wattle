@@ -2,7 +2,7 @@
 (import ./site)
 
 (def- repo-config
-  {:help "Write the site for one repository."
+  {:help "Generate pages for a repository."
    :rules [:repo-dir     {:help  "The path of the Git repository."
                           :proxy "repo-dir"
                           :req?  true}
@@ -39,7 +39,7 @@
            "-------------------------------------------"]})
 
 (def- index-config
-  {:help "Write the list of repositories."
+  {:help "Generate the list of repositories."
    :rules [:repo-dirs {:help   "The paths of the Git repositories."
                        :proxy  "repo-dir"
                        :req?   true
@@ -52,8 +52,7 @@
            "-------------------------------------------"]})
 
 (def- setup-config
-  {:help (string "Set the description, owner and clone URL of a repository, or "
-                 "show them if no option is given.")
+  {:help "Set or show the description, owner and clone URL for a repository."
    :rules [:repo-dir       {:help  "The path of the Git repository."
                             :proxy "repo-dir"
                             :req?  true}
@@ -101,6 +100,9 @@
       (def params (sub :params))
       (try
         (case (sub :cmd)
+          "index"
+          (site/write-index (params :repo-dirs)
+                            :output (opts "output"))
           "repo"
           (site/write-repo (params :repo-dir)
                            :output (opts "output")
@@ -109,9 +111,6 @@
                            :per-page (opts "per-page")
                            :base-url (opts "base-url")
                            :parent (opts "parent"))
-          "index"
-          (site/write-index (params :repo-dirs)
-                            :output (opts "output"))
           "setup"
           (site/setup (params :repo-dir)
                       (from-pairs (keep #(when-let [v (opts $)] [(keyword $) v])

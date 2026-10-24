@@ -83,7 +83,7 @@ the repository and `wattle apps remove augite` to remove it.
 
 ## Using
 
-Run `zig-out/bin/augite --help` for commands and options. See
+Run `augite --help` for commands and options. See
 [`augite(1)`][augite-man] for an overview of the commands.
 
 [augite-man]: man/man1/augite.1.predoc
