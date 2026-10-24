@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "The tag to release, such as v0.1.0"
+        description: "Which tag do you want to release against?"
         type: string
         required: true
 
@@ -70,7 +70,7 @@ jobs:
           package="augite-$RELEASE_VERSION"
           mkdir -p "$package/man/man1" "$package/res/hooks" \
             "$package/licenses"
-          cp zig-out/bin/augite LICENSE README.md "$package/"
+          cp zig-out/bin/augite LICENSE README.md CHANGELOG.md "$package/"
           cp deps/oniguruma/LICENSE "$package/licenses/oniguruma.txt"
           cp deps/gum/LICENSE "$package/licenses/gum.txt"
           cp ../wattle/LICENSE "$package/licenses/wattle.txt"
@@ -91,6 +91,32 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out Augite
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.version }}
+      # The release's notes are its section of CHANGELOG.md: the lines after
+      # its heading and before the next. The changelog is wrapped to 80
+      # columns, but GitHub keeps the line breaks in the notes of a release,
+      # so each wrapped entry is joined onto a single line.
+      - name: Extract the notes
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          awk -v heading="## ${RELEASE_VERSION#v} " '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md | awk '
+            /^ +[^ ]/ { sub(/^ +/, ""); line = line " " $0; next }
+            { if (started) print line; line = $0; started = 1 }
+            END { if (started) print line }
+          ' > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for ${RELEASE_VERSION#v}"
+            exit 1
+          fi
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -100,7 +126,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
-          generate_release_notes: true
+          body_path: notes.md
           files: ./artifacts/*.tar.gz
           fail_on_unmatched_files: true
           overwrite_files: false
