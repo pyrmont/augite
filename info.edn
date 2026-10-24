@@ -1,6 +1,6 @@
 {:name "augite"
  :group "net.inqk"
- :version "DEVEL"
+ :version "0.1.0"
  :description "A static site generator for Git repositories"
  :author "Michael Camilleri"
  :license "MIT"
