@@ -1,7 +1,70 @@
-// augite.js adds a file tree and a filter to the files page, and the
-// selection of a range of lines to file pages. Every page works without it.
+// augite.js adds a button to copy the clone command, a file tree and a filter
+// to the files page, and the selection of a range of lines to file pages.
+// Every page works without it.
 (function () {
   "use strict";
+
+  // Clone command
+
+  var svgNS = "http://www.w3.org/2000/svg";
+
+  // Returns an SVG glyph drawn from the path data in paths.
+  function glyph(paths) {
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.5");
+    svg.setAttribute("aria-hidden", "true");
+    paths.forEach(function (d) {
+      var path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", d);
+      svg.appendChild(path);
+    });
+    return svg;
+  }
+
+  var copyPaths = ["M5.5 5.5h8v8h-8z", "M10.5 3V2.5h-8v8H3"];
+  var donePaths = ["M3 8.5l3 3 7-7"];
+
+  // Copies text to the clipboard. The clipboard API is available only in a
+  // secure context, so elsewhere the text is copied from a hidden field.
+  function copyText(text) {
+    if (navigator.clipboard) return navigator.clipboard.writeText(text);
+    var field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    var copied = document.execCommand("copy");
+    document.body.removeChild(field);
+    return copied ? Promise.resolve() : Promise.reject();
+  }
+
+  function setUpClone(p) {
+    var command = p.querySelector(".command").textContent.trim();
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.title = "Copy";
+    button.setAttribute("aria-label", "Copy clone command");
+    button.appendChild(glyph(copyPaths));
+    var timer = null;
+    button.addEventListener("click", function () {
+      copyText(command).then(function () {
+        button.replaceChild(glyph(donePaths), button.firstChild);
+        button.title = "Copied";
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          button.replaceChild(glyph(copyPaths), button.firstChild);
+          button.title = "Copy";
+        }, 1500);
+      });
+    });
+    p.appendChild(button);
+  }
 
   // Files page
 
@@ -143,6 +206,8 @@
     select();
   }
 
+  var clone = document.querySelector("header .url");
+  if (clone) setUpClone(clone);
   var files = document.getElementById("files");
   if (files) setUpFiles(files);
   var blob = document.getElementById("blob");

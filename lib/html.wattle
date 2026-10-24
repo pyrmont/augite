@@ -88,10 +88,9 @@
   Returns an HTML page for the repository described by ctx. root is the
   relative path from the page to the top of the repository's site, title is
   the title of the page, current is the key of the navigation item to mark
-  as current, if any, and body is the content of the page. With script, the
-  page loads the script at that path.
+  as current, if any, and body is the content of the page.
   """
-  [ctx root title current body & {:keys [script]}]
+  [ctx root title current body]
   (def info (ctx :info))
   (def name (escape (info :name)))
   (def desc (info :description))
@@ -102,7 +101,7 @@
             "<link rel=\"alternate\" type=\"application/atom+xml\" title=\"" name
             " Atom Feed (tags)\" href=\"" root "tags.xml\">\n"
             "<link rel=\"stylesheet\" href=\"" root assets/style-href "\">\n"
-            (if script (string "<script src=\"" script "\" defer></script>\n") "")))
+            "<script src=\"" root assets/script-href "\" defer></script>\n"))
   (def out !"")
   (buffer/push!
     out
@@ -113,8 +112,8 @@
   (when desc
     (buffer/push! out "<p class=\"desc\">" (escape desc) "</p>\n"))
   (when-let [url (info :url)]
-    (buffer/push! out "<p class=\"url\">git clone <a href=\"" (escape url) "\">"
-                  (escape url) "</a></p>\n"))
+    (buffer/push! out "<p class=\"url\"><span class=\"command\">git clone <a href=\""
+                  (escape url) "\">" (escape url) "</a></span></p>\n"))
   (buffer/push!
     out
     "</div>\n"

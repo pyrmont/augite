@@ -1,4 +1,3 @@
-(import ../assets)
 (import ../html)
 
 (defn root
@@ -43,5 +42,7 @@
       (def [text n-lines] (lines (blob :content) (blob :highlighted)))
       (buffer/push! out "<pre id=\"blob\" style=\"--digits: " (string (length (string n-lines)))
                     "\"><code>" text "</code></pre>\n")))
-  (html/page ctx r path :files (string out)
-             :script (string r assets/script-href)))
+  ; A file with its own navigation item, such as the README, marks that item.
+  (def href (string "file/" path ".html"))
+  (def item (find #(= href (get $ 2)) (ctx :nav)))
+  (html/page ctx r path (if item (first item) :files) (string out)))

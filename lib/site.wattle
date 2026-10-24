@@ -30,9 +30,9 @@
                [:refs "Refs" "refs.html"]])
   (when (has-value? paths ".gitmodules")
     (array/push! items [:submodules "Submodules" "file/.gitmodules.html"]))
-  (each [text names] [["README" readmes] ["LICENSE" licenses]]
+  (each [key text names] [[:readme "README" readmes] [:license "LICENSE" licenses]]
     (when-let [name (find #(has-value? paths $) names)]
-      (array/push! items [nil text (string "file/" name ".html")])))
+      (array/push! items [key text (string "file/" name ".html")])))
   (vec items))
 
 (defn- text?

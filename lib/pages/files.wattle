@@ -1,4 +1,3 @@
-(import ../assets)
 (import ../html)
 
 (def- modes
@@ -49,4 +48,4 @@
   (each entry entries
     (buffer/push! out (row ctx entry (get blobs (entry :path)))))
   (buffer/push! out "</tbody>\n</table>\n")
-  (html/page ctx "" "Files" :files (string out) :script assets/script-href))
+  (html/page ctx "" "Files" :files (string out)))

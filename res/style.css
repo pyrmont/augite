@@ -15,6 +15,7 @@
   --deleted: #c00;
   --deleted-bg: rgba(204, 0, 0, 0.08);
   --field: #fff;
+  --well: #f2f2f2;
 
   --hl-comment: #6e7781;
   --hl-string: #0a3069;
@@ -46,6 +47,7 @@
     --deleted: #e05050;
     --deleted-bg: rgba(205, 0, 0, 0.15);
     --field: #111;
+    --well: #262626;
 
     --hl-comment: #8b949e;
     --hl-string: #a5d6ff;
@@ -142,13 +144,32 @@ header {
   display: grid;
   grid-template-columns: auto 1fr;
   column-gap: 0.75rem;
-  row-gap: 0.25rem;
-  align-items: center;
+  row-gap: 0.75rem;
+  align-items: start;
+}
+
+header img {
+  display: block;
 }
 
 header p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+header .url {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+header .command {
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background-color: var(--well);
 }
 
 header nav {
@@ -159,10 +180,27 @@ nav a[aria-current="page"] {
   font-weight: bold;
 }
 
-@media (min-width: 40rem) {
-  header nav {
-    grid-column: 2;
-  }
+.copy {
+  flex: none;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background-color: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.copy:hover {
+  background-color: var(--hover);
+  color: var(--fg);
+}
+
+.copy svg {
+  display: block;
+  width: 1em;
+  height: 1em;
 }
 
 /* Tables */

@@ -66,7 +66,12 @@
                 "\n" (html/escape (message commit)) "\n")
   (string out))
 
-(defn- diffstat [files]
+(defn- diffstat
+  """
+  Returns the table of files changed, with each name linked to its diff when
+  linked? is true.
+  """
+  [files linked?]
   (def out !"<div class=\"scroll\"><table id=\"diffstat\">\n")
   (for i 0 (length files)
     (def file (get files i))
@@ -77,7 +82,9 @@
                         (html/escape (file :path)))))
     (buffer/push! out
                   (string "<tr><td class=\"" status "\">" status "</td>"
-                          "<td><a href=\"#h" i "\">" name "</a></td>"
+                          "<td>" (if linked?
+                                   (string "<a href=\"#h" i "\">" name "</a>")
+                                   name) "</td>"
                           "<td> | </td><td class=\"num\">" (changed file) "</td>"
                           "<td>" (bar file) "</td></tr>\n")))
   (buffer/push! out "</table></div>\n")
@@ -138,14 +145,16 @@
   [ctx commit files]
   (def added (sum (map #(or ($ :added) 0) files)))
   (def deleted (sum (map #(or ($ :deleted) 0) files)))
+  (def suppressed? (or (> (length files) max-files)
+                       (> added max-lines) (> deleted max-lines)))
   (def out !"")
   (buffer/push! out
                 "<pre class=\"commit\">" (header commit) "</pre>\n"
-                "<h2>Diffstat</h2>\n" (diffstat files)
+                "<h2>Diffstat</h2>\n" (diffstat files (not suppressed?))
                 "<p class=\"summary\">" (plural (length files) "file") " changed, "
                 (plural added "insertion") "(+), "
                 (plural deleted "deletion") "(-)</p>\n")
-  (if (or (> (length files) max-files) (> added max-lines) (> deleted max-lines))
+  (if suppressed?
     (buffer/push! out "<p>Diff is too large, output suppressed.</p>\n")
     (buffer/push! out (diff ctx files)))
   (html/page ctx root (commit :subject) nil (string out)))
