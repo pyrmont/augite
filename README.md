@@ -66,6 +66,7 @@ appropriate locations. For example:
 $ sudo cp zig-out/bin/augite /usr/local/bin/
 $ sudo cp man/man1/*.1 /usr/local/share/man/man1/
 ```
+
 If you have Wattle installed, you can instead build and install `augite` and
 its man pages under your `WATTLE_PREFIX` in one step:
 
@@ -142,10 +143,10 @@ See [`augite-index(1)`][index-man] for all options (`man augite-index`).
 
 ### Serving the Pages
 
-Augite writes static files. Generate them in a directory that your web server
-serves or copy the generated files to your hosting provider. The web server
-only needs to serve the files; it does not need to run Augite or have access
-to the Git repositories.
+Augite writes static files. You can generate them in a directory that your web
+server serves or copy the generated files to your hosting provider. The web
+server only needs to serve the files; it does not need to run Augite or have
+access to the Git repositories.
 
 If you have several repositories, you can generate each site in its own
 subdirectory and use `augite index` to create a page that lists the
@@ -155,14 +156,14 @@ Augite writes HTML that expects a `logo.png` and `favicon.png` in each
 repository's directory but does not create them. You need to create these
 images separately. The repository index also uses each repository's `logo.png`.
 
-### Rebuilding After a Push
+### Rebuilding on Push
 
 The generated pages are a snapshot of the repository. To keep the pages up to
 date, you need to run `augite repo` after each change to the repository. You can
-do this manually, on a schedule, or as part of a deployment job.
+do this manually, on a schedule or as part of a deployment job.
 
 If you host the Git repositories yourself on a remote machine, Git can be
-configured to run these commands automatically after a push. A *hook* is an
+configured to run these commands automatically after a push. A _hook_ is an
 executable file that Git runs when a particular event occurs. The
 `post-receive` hook runs in the repository that receives a push after its
 references have been updated. It runs as the user handling the push, so that
@@ -189,15 +190,13 @@ unset GIT_DIR
 "$augite" repo -o "$output" "$repo"
 ```
 
-Use an absolute path to the Augite executable, since the hook may have a
-different `PATH` from your interactive shell. Add options such as `-g` for
-grammars, `-c` for a highlighting cache and `-u` for the site's base URL as
-needed. If a `post-receive` hook already exists, add the rebuild command to
-it rather than replacing it.
+Use an absolute path to `augite`, since the hook may have a different `PATH`
+from your interactive shell. Add options as needed. Make sure the hook
+executable with `chmod +x hooks/post-receive`, adjusting the path for your
+repository.
 
-Make the hook executable with `chmod +x hooks/post-receive`, adjusting the
-path for your repository. To generate the initial site and check the script,
-run it from the Git directory as the user that will handle pushes:
+To generate the initial site and check the script, run it from the Git
+directory as the user that will handle pushes:
 
 ```sh
 cd /path/to/repo
@@ -205,11 +204,9 @@ sudo -u <git-user> ./hooks/post-receive
 ```
 
 Later pushes to that repository will run it automatically. This simple hook
-rebuilds before the push command returns. If you maintain a repository index,
-add an `augite index` command after the rebuild, passing the paths of all the
-repositories you want to list.
+rebuilds before the push command returns.
 
-### Using the Example Hook
+#### Using the Example Hook
 
 The [example hook][post-receive] provides a more complete setup for a Linux
 server. It rebuilds in the background so pushes can return promptly, and
@@ -317,7 +314,7 @@ Report issues in [GitHub Issues][issues].
 
 ## License
 
-Augite is licensed under the MIT License. See [LICENSE][]. Oniguruma keeps its
-own license, which is in `deps/oniguruma/`.
+Augite is licensed under the MIT License. See [LICENSE][]. Oniguruma is
+included pursuant to its license.
 
 [LICENSE]: LICENSE
