@@ -289,8 +289,12 @@ wattle test
 The version script requires `predoc` on your path. Like the manual-generation
 script, it locates the project from its own path and can run from any directory.
 
-Review and commit the updated `info.edn`, `.predoc` sources and generated
-manuals along with any other release changes. Tag that commit and push the
+In `CHANGELOG.md`, rename the Unreleased heading to the version and the date,
+such as `## 0.1.0 (2026-10-24)`. The release's notes are taken from that
+section.
+
+Review and commit the updated `info.edn`, `.predoc` sources, generated manuals
+and changelog along with any other release changes. Tag that commit and push the
 commit and tag:
 
 ```sh
@@ -302,13 +306,14 @@ git push origin v0.1.0
 In GitHub Actions, run the [release workflow][release-workflow] with the
 `version` input set to the full tag, such as `v0.1.0`. It tests and builds
 the tagged source, packages the three platform archives and creates a draft
-release with generated notes. Review the notes and archives before publishing
+release with the notes from the changelog. Review the notes and archives before publishing
 the release.
 
 [release-workflow]: https://github.com/pyrmont/augite/actions/workflows/release.yml
 
-After tagging the release, run `wattle res/tools/version.wattle DEVEL` and
-commit the resulting changes to return to development.
+After tagging the release, run `wattle res/tools/version.wattle DEVEL`, add
+an empty Unreleased section to the top of `CHANGELOG.md` and commit the
+resulting changes to return to development.
 
 ## Bugs
 
