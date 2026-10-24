@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Which tag do you want to release against?"
+        description: "The tag to release, such as v0.1.0"
         type: string
         required: true
 
