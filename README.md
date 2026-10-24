@@ -1,7 +1,10 @@
 # Augite
 
+[![Latest Release][release-badge]][release-latest]
 [![Test Status][test-badge]][test-status]
 
+[release-badge]: https://img.shields.io/github/v/release/pyrmont/augite
+[release-latest]: https://github.com/pyrmont/augite/releases/latest
 [test-badge]: https://github.com/pyrmont/augite/actions/workflows/test.yml/badge.svg
 [test-status]: https://github.com/pyrmont/augite/actions/workflows/test.yml
 
